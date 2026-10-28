@@ -1,0 +1,44 @@
+{
+  "name": "sitio",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Sítio — a coffee farm that becomes a village, running in the browser.",
+  "license": "MIT",
+  "packageManager": "pnpm@10.27.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @sitio/web dev",
+    "build": "pnpm --filter @sitio/web build",
+    "preview": "pnpm --filter @sitio/web preview",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc -p packages/kernel && tsc -p packages/bridge && tsc -p packages/view-iso && tsc -p packages/chrome && tsc -p packages/simulation && tsc -p apps/web && tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "art": "tsx tools/build-art.ts",
+    "art:draw": "tsx tools/build-art.ts --draw"
+  },
+  "devDependencies": {
+    "@sitio/bridge": "workspace:*",
+    "@sitio/chrome": "workspace:*",
+    "@sitio/kernel": "workspace:*",
+    "@sitio/simulation": "workspace:*",
+    "@sitio/view-iso": "workspace:*",
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^22.20.5",
+    "eslint": "^10.13.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.0",
+    "vitest": "^5.0.5"
+  }
+}

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Sítio: a coffee farm that becomes a village. A Game Studio 42 game."
+    />
+    <meta name="theme-color" content="#241c16" />
+    <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
+    <title>Sítio</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #241c16;
+      }
+      .static-splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        background: radial-gradient(circle at 50% 40%, #3a2a1e 0%, #241c16 70%);
+        color: #f2e8d5;
+        font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      }
+      .static-splash img {
+        width: 96px;
+        height: 96px;
+      }
+      .static-splash strong {
+        font-size: 40px;
+        font-weight: 800;
+        letter-spacing: 0.3em;
+        margin-right: -0.3em;
+      }
+      .static-splash span {
+        color: #b9a78a;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div class="static-splash" aria-busy="true">
+        <img src="%BASE_URL%favicon.svg" alt="" />
+        <strong>SÍTIO</strong>
+        <span>Loading…</span>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
