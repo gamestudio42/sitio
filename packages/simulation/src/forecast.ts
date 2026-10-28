@@ -35,6 +35,45 @@ export function coffeeWorkUnits(people: Person[]): number {
   return units;
 }
 
+export function coffeeWorkingLotIds(state: ForecastState): number[] {
+  const units = coffeeWorkUnits(state.people);
+  if (units <= 0) return [];
+  const perMonth = units * COFFEE_CELLS_PER_PERIOD;
+  const lotByCell = new Map<number, number>();
+  for (const lot of state.coffeeLots) {
+    for (let y = lot.y; y < lot.y + lot.h; y++) {
+      for (let x = lot.x; x < lot.x + lot.w; x++) {
+        const index = y * SITIO_SIZE + x;
+        if ((state.coffee[index] ?? COFFEE_NONE) !== COFFEE_NONE) {
+          lotByCell.set(index, lot.id);
+        }
+      }
+    }
+  }
+
+  const targets: number[] = [];
+  if (seasonOf(state.turn) === 'autumn') {
+    for (let index = 0; index < state.coffee.length; index++) {
+      if (state.coffee[index] === COFFEE_MATURE) targets.push(index);
+    }
+  } else {
+    for (let index = 0; index < state.coffee.length; index++) {
+      const stage = state.coffee[index] ?? COFFEE_NONE;
+      if (stage >= COFFEE_MUDA && stage < COFFEE_MATURE) targets.push(index);
+    }
+  }
+
+  const take = Math.min(targets.length, perMonth);
+  const lots = new Set<number>();
+  for (let index = 0; index < take; index++) {
+    const cell = targets[index];
+    if (cell === undefined) continue;
+    const lotId = lotByCell.get(cell);
+    if (lotId !== undefined) lots.add(lotId);
+  }
+  return [...lots];
+}
+
 function emptyForecast(lots: CoffeeLot[]): CoffeeHarvestForecast[] {
   return lots.map((lot) => ({
     lotId: lot.id,

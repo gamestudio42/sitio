@@ -24,10 +24,12 @@ export interface ActorPlan {
   slot: number;
 }
 
+export type InputMarkerState = 'applied' | 'queued' | null;
+
 export interface FieldMarker {
   lotId: number;
-  fertilizer: boolean;
-  limestone: boolean;
+  fertilizer: InputMarkerState;
+  limestone: InputMarkerState;
 }
 
 export interface RestingHouse {
@@ -39,7 +41,16 @@ export interface RestingHouse {
 
 type ActorState = Pick<
   SitioFullState,
-  'people' | 'families' | 'coffeeLots' | 'sites' | 'plantOrders' | 'structures' | 'roadPlan' | 'terrain'
+  | 'people'
+  | 'families'
+  | 'coffeeLots'
+  | 'sites'
+  | 'plantOrders'
+  | 'structures'
+  | 'roadPlan'
+  | 'terrain'
+  | 'inputStock'
+  | 'marketCart'
 >;
 
 function familyOf(state: ActorState, person: Person): Family | null {
@@ -142,27 +153,28 @@ function resolveTask(
     return { ...anchor, groupKey: key, targetKey: `plantLot:${key}` };
   }
   if (task.kind === 'fertilize' || task.kind === 'limestone') {
-    const lot = state.coffeeLots.find(
-      (entry) =>
-        task.x >= entry.x &&
-        task.y >= entry.y &&
-        task.x < entry.x + entry.w &&
-        task.y < entry.y + entry.h,
+    const eligible = state.coffeeLots.filter((lot) =>
+      task.kind === 'fertilize' ? !lot.fertilized : !lot.limed,
     );
-    if (!lot) {
+    const workers = state.people.filter(
+      (entry) => entry.age >= 16 && entry.task.kind === task.kind,
+    );
+    const workerIndex = Math.max(
+      0,
+      workers.findIndex((entry) => entry.id === person.id),
+    );
+    const lot = eligible[workerIndex] ?? eligible[0] ?? state.coffeeLots[0];
+    if (lot) {
       return {
-        x: task.x + 0.5,
-        y: task.y + 0.5,
-        groupKey: `tile:${task.x},${task.y}`,
-        targetKey: `${task.kind}:${task.x},${task.y}`,
-        };
+        x: lot.x + lot.w / 2,
+        y: lot.y + lot.h / 2,
+        groupKey: `lot:${lot.id}`,
+        targetKey: `${task.kind}:${lot.id}`,
+      };
     }
-    return {
-      x: task.x + 0.5,
-      y: task.y + 0.5,
-      groupKey: `lot:${lot.id}`,
-      targetKey: `${task.kind}:${task.x},${task.y}`,
-    };
+    const anchor = family ? houseAnchor(family, 'rest') : { x: 0.5, y: 0.5 };
+    const key = family ? `house:${family.id}` : 'house:none';
+    return { ...anchor, groupKey: key, targetKey: `${task.kind}:${key}` };
   }
   if (task.kind === 'plant' || task.kind === 'clear') {
     return {
@@ -179,6 +191,17 @@ function resolveTask(
       groupKey: 'road',
       targetKey: 'road',
     };
+  }
+  if (task.kind === 'roast') {
+    const forno = structureOf(state, 'forno');
+    if (forno) {
+      const anchor = structureAnchor(forno);
+      const key = `structure:${forno.id}`;
+      return { ...anchor, groupKey: key, targetKey: `roast:${key}` };
+    }
+    const anchor = family ? houseAnchor(family, 'rest') : { x: 0.5, y: 0.5 };
+    const key = family ? `house:${family.id}` : 'house:none';
+    return { ...anchor, groupKey: key, targetKey: `roast:${key}` };
   }
   const lot = state.coffeeLots[person.id % state.coffeeLots.length];
   if (lot) {
@@ -223,25 +246,45 @@ export function planActors(state: ActorState): ActorPlan[] {
 export function fieldMarkers(state: ActorState): FieldMarker[] {
   const markers = new Map<number, FieldMarker>();
   for (const lot of state.coffeeLots) {
-    markers.set(lot.id, { lotId: lot.id, fertilizer: false, limestone: false });
+    markers.set(lot.id, {
+      lotId: lot.id,
+      fertilizer: lot.fertilized ? 'applied' : null,
+      limestone: lot.limed ? 'applied' : null,
+    });
   }
-  for (const person of state.people) {
-    const task = person.task;
-    if (task.kind !== 'fertilize' && task.kind !== 'limestone') continue;
-    const lot = state.coffeeLots.find(
-      (entry) =>
-        task.x >= entry.x &&
-        task.y >= entry.y &&
-        task.x < entry.x + entry.w &&
-        task.y < entry.y + entry.h,
+  const queue = (
+    kind: 'fertilize' | 'limestone',
+    available: number,
+  ) => {
+    let remaining = Math.min(
+      available,
+      state.people.filter(
+        (person) => person.age >= 16 && person.task.kind === kind,
+      ).length,
     );
-    if (!lot) continue;
-    const marker = markers.get(lot.id);
-    if (!marker) continue;
-    if (task.kind === 'fertilize') marker.fertilizer = true;
-    else marker.limestone = true;
-  }
-  return [...markers.values()].filter((marker) => marker.fertilizer || marker.limestone);
+    if (remaining <= 0) return;
+    for (const lot of state.coffeeLots) {
+      if (remaining <= 0) break;
+      const marker = markers.get(lot.id);
+      if (!marker) continue;
+      if (kind === 'fertilize') {
+        if (lot.fertilized || marker.fertilizer !== null) continue;
+        marker.fertilizer = 'queued';
+      } else {
+        if (lot.limed || marker.limestone !== null) continue;
+        marker.limestone = 'queued';
+      }
+      remaining--;
+    }
+  };
+  queue(
+    'fertilize',
+    state.inputStock.fertilizer + state.marketCart.fertilizer,
+  );
+  queue('limestone', state.inputStock.limestone + state.marketCart.limestone);
+  return [...markers.values()].filter(
+    (marker) => marker.fertilizer !== null || marker.limestone !== null,
+  );
 }
 
 export function restingHouses(state: ActorState): RestingHouse[] {

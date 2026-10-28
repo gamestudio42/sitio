@@ -3,9 +3,9 @@ import {
   SITIO_SAVE_EXTENSION,
   SITIO_SAVE_VERSION,
   STARTER_FOOTPRINTS,
+  demolishRecovery,
   footprintOfBuilding,
   type BuildingKind,
-  type CoffeeGrade,
   type InputKind,
   type SitioCommandReason,
   type SitioFullState,
@@ -24,7 +24,7 @@ import { applyDocumentLocale, bootLocale, catalog, persistLocale, type Locale } 
 import { SitioRenderer } from './renderer';
 
 export type Screen = 'menu' | 'game';
-export type Tool = 'select' | 'road' | 'coffee' | BuildingKind;
+export type Tool = 'select' | 'road' | 'coffee' | 'demolish' | BuildingKind;
 export type Panel = 'families' | 'works' | 'coffee' | 'market' | 'reports';
 
 export interface BootState {
@@ -53,7 +53,17 @@ export interface SetupPreview {
 
 export interface PendingLand {
   personId: number;
-  kind: 'plant' | 'clear' | 'fertilize' | 'limestone';
+  kind: 'plant' | 'clear';
+}
+
+export interface PendingDemolish {
+  structureId: number;
+  kind: BuildingKind;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  wood: number;
 }
 
 export interface SitioUi {
@@ -71,6 +81,7 @@ export interface SitioUi {
   setupPreview: SetupPreview | null;
   setupPinned: boolean;
   pendingLand: PendingLand | null;
+  pendingDemolish: PendingDemolish | null;
   reportOpen: boolean;
   endingOpen: boolean;
 }
@@ -93,6 +104,7 @@ export class SitioSession {
     setupPreview: null,
     setupPinned: false,
     pendingLand: null,
+    pendingDemolish: null,
     reportOpen: false,
     endingOpen: false,
   });
@@ -226,7 +238,12 @@ export class SitioSession {
   }
 
   setTool(tool: Tool): void {
-    this.ui.set({ tool, selectedTile: null, pendingLand: null });
+    this.ui.set({
+      tool,
+      selectedTile: null,
+      pendingLand: null,
+      pendingDemolish: null,
+    });
     this.clearPlacement();
   }
 
@@ -236,11 +253,14 @@ export class SitioSession {
     }));
   }
 
-  async newGame(): Promise<void> {
-    const { name, seed } = this.ui.get();
+  private async startGame(options: {
+    name: string;
+    seed: string;
+    preset?: 'test';
+  }): Promise<void> {
     this.renderer.setInputEnabled(true);
     this.clearPlacement();
-    await this.client.newGame({ name: name || 'Sítio', seed: seed || 'sitio' });
+    await this.client.newGame(options);
     this.ui.set({
       screen: 'game',
       tool: 'select',
@@ -249,9 +269,20 @@ export class SitioSession {
       setupPreview: null,
       setupPinned: false,
       pendingLand: null,
+      pendingDemolish: null,
       reportOpen: false,
       endingOpen: false,
     });
+  }
+
+  async newGame(): Promise<void> {
+    const { name, seed } = this.ui.get();
+    await this.startGame({ name: name || 'Sítio', seed: seed || 'sitio' });
+  }
+
+  async newTestFarm(): Promise<void> {
+    const { name } = this.ui.get();
+    await this.startGame({ name: name || 'Sítio', seed: 'teste', preset: 'test' });
   }
 
   async continueLatest(): Promise<void> {
@@ -285,6 +316,7 @@ export class SitioSession {
       setupPreview: null,
       setupPinned: false,
       pendingLand: null,
+      pendingDemolish: null,
       reportOpen: false,
       endingOpen: state?.status !== 'playing',
     });
@@ -343,6 +375,7 @@ export class SitioSession {
       tool: 'select',
       setupPreview: null,
       pendingLand: null,
+      pendingDemolish: null,
     });
     this.clearPlacement();
     await this.save(false);
@@ -357,8 +390,8 @@ export class SitioSession {
     return true;
   }
 
-  beginLand(kind: 'plant' | 'clear' | 'fertilize' | 'limestone', personId: number): void {
-    this.ui.set({ pendingLand: { kind, personId } });
+  beginLand(kind: 'plant' | 'clear', personId: number): void {
+    this.ui.set({ pendingLand: { kind, personId }, activePanel: null });
     this.clearPlacement();
   }
 
@@ -377,8 +410,60 @@ export class SitioSession {
     this.clearPlacement();
   }
 
-  async sellCoffee(grade: CoffeeGrade, amount: number): Promise<void> {
-    const result = await this.client.command({ type: 'sellCoffee', grade, amount });
+  selectDemolish(x: number, y: number): void {
+    const state = this.ui.get().state;
+    const structure = state?.structures.find(
+      (entry) =>
+        x >= entry.x &&
+        y >= entry.y &&
+        x < entry.x + entry.w &&
+        y < entry.y + entry.h,
+    );
+    if (!structure) {
+      this.toast('error', this.reason('no-structure'));
+      return;
+    }
+    if (structure.kind === 'sede') {
+      this.toast('error', this.reason('in-use'));
+      return;
+    }
+    this.ui.set({
+      pendingDemolish: {
+        structureId: structure.id,
+        kind: structure.kind,
+        x: structure.x,
+        y: structure.y,
+        w: structure.w,
+        h: structure.h,
+        wood: demolishRecovery(structure.kind),
+      },
+    });
+    this.clearPlacement();
+  }
+
+  async confirmDemolish(): Promise<void> {
+    const pending = this.ui.get().pendingDemolish;
+    if (!pending) return;
+    const result = await this.client.command({
+      type: 'demolish',
+      structureId: pending.structureId,
+    });
+    if (!result.ok) {
+      this.toast('error', this.reason(result.reason));
+      return;
+    }
+    this.ui.set({ pendingDemolish: null, tool: 'select' });
+    this.clearPlacement();
+    this.toast('info', catalog(this.ui.get().locale).demolished);
+  }
+
+  cancelDemolish(): void {
+    this.ui.set({ pendingDemolish: null });
+    this.clearPlacement();
+  }
+
+  async sellCoffee(batchId: number, amount: number): Promise<void> {
+    const result = await this.client.command({ type: 'sellCoffee', batchId, amount });
     if (!result.ok) {
       this.toast('error', this.reason(result.reason));
       return;
@@ -460,6 +545,7 @@ export class SitioSession {
       setupPreview: null,
       setupPinned: false,
       pendingLand: null,
+      pendingDemolish: null,
       reportOpen: false,
       endingOpen: false,
     });
@@ -550,6 +636,10 @@ export class SitioSession {
       await this.plantCoffeeLot(x, y);
       return;
     }
+    if (ui.tool === 'demolish') {
+      this.selectDemolish(x, y);
+      return;
+    }
     await this.build(ui.tool, x, y);
   }
 
@@ -567,6 +657,31 @@ export class SitioSession {
         return;
       }
       await this.previewStarter(tile.x, tile.y);
+      return;
+    }
+    if (ui.tool === 'demolish') {
+      if (!tile) {
+        this.clearPlacement();
+        return;
+      }
+      const structure = state.structures.find(
+        (entry) =>
+          tile.x >= entry.x &&
+          tile.y >= entry.y &&
+          tile.x < entry.x + entry.w &&
+          tile.y < entry.y + entry.h,
+      );
+      if (!structure) {
+        this.clearPlacement();
+        return;
+      }
+      this.renderer.setPlacement({
+        x: structure.x,
+        y: structure.y,
+        w: structure.w,
+        h: structure.h,
+        valid: false,
+      });
       return;
     }
     if (ui.pendingLand || ui.tool === 'select' || ui.tool === 'road' || !tile) {

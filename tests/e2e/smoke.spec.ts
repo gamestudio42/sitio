@@ -12,4 +12,17 @@ test('opens the menu and starts a new farm', async ({ page }) => {
   await page.getByTestId('sitio-new').click();
   await expect(menu).toBeHidden();
   await expect(page.locator('.setup-panel')).toBeVisible();
+  await expect(page.getByTestId('sitio-hud')).toBeVisible();
+  await expect(page.getByTestId('sitio-resource-coins')).toBeVisible();
+  await expect(page.getByTestId('sitio-tutorial')).toBeVisible();
+  await expect(page.getByTestId('sitio-tutorial')).toHaveAttribute('data-step', 'sede');
+  await expect(page.locator('.speech-bubble')).not.toBeEmpty();
+
+  await page.getByTestId('sitio-top-menu').click();
+  await expect(page.getByTestId('sitio-menu-save')).toBeVisible();
+  await expect(page.getByTestId('sitio-menu-export')).toBeVisible();
+  await expect(page.getByTestId('sitio-menu-locale')).toBeVisible();
+  await expect(page.getByTestId('sitio-menu-back')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('sitio-menu-save')).toBeHidden();
 });

@@ -74,10 +74,21 @@ describe('readSlices', () => {
       'capela',
       'venda',
       'escola',
+      'forno',
       'family',
       'icon_fertilizer',
       'icon_limestone',
       'icon_clock',
+      'hud_season_spring',
+      'hud_season_summer',
+      'hud_season_autumn',
+      'hud_season_winter',
+      'hud_coffee',
+      'hud_supplies',
+      'hud_reputation',
+      'hud_book',
+      'hud_stamp',
+      'hud_seal',
     ]) {
       expect(slices.has(name), name).toBe(true);
     }
@@ -87,6 +98,9 @@ describe('readSlices', () => {
     expect(slices.get('tulha')).toEqual({ x: 0, y: 368, w: 128, h: 104 });
     expect(slices.get('venda')).toEqual({ x: 128, y: 368, w: 96, h: 64 });
     expect(slices.get('escola')).toEqual({ x: 224, y: 368, w: 96, h: 88 });
+    expect(slices.get('forno')).toEqual({ x: 256, y: 480, w: 128, h: 104 });
+    expect(slices.get('hud_season_spring')).toEqual({ x: 392, y: 480, w: 24, h: 24 });
+    expect(slices.get('hud_stamp')).toEqual({ x: 456, y: 480, w: 48, h: 48 });
     expect(slices.get('coffee_lot_0')).toEqual({ x: 0, y: 256, w: 128, h: 96 });
     expect(slices.get('road_0')).toEqual({ x: 0, y: 352, w: 32, h: 16 });
     expect(slices.get('road_15')).toEqual({ x: 480, y: 352, w: 32, h: 16 });

@@ -3,6 +3,8 @@ import {
   BUILDING_IDS,
   BUILDING_SEDE,
   BUILDING_TERREIRO,
+  BUILDING_FORNO,
+  BUILDING_NONE,
   COFFEE_FORMING,
   COFFEE_MATURE,
   COFFEE_MUDA,
@@ -13,15 +15,22 @@ import {
   SITIO_SIZE,
   SitioEngine,
   TERRAIN_TERRA,
+  TERREIRO_LOT_SLOTS,
+  TULHA_CAPACITY,
+  coffeeBatchValue,
   coffeeHarvestForecast,
+  coffeeWorkingLotIds,
+  demolishRecovery,
   decodeSitioSave,
   encodeSitioSave,
   type BuildingKind,
+  type CoffeeBatch,
+  type CoffeeGrade,
   type Family,
   type SeasonReport,
   type WorkTask,
 } from '@sitio/simulation';
-import { stringifySave } from '@sitio/kernel';
+import { saveChecksum, stringifySave } from '@sitio/kernel';
 import { fieldMarkers, planActors, restingHouses } from '../../apps/web/src/actors';
 import { describe, expect, it } from 'vitest';
 
@@ -72,6 +81,35 @@ function addBuilding(
     }
   }
   engine.structures.push({ id: 500 + engine.structures.length, kind, x, y, w, h });
+}
+
+function addBatch(
+  engine: SitioEngine,
+  grade: CoffeeGrade,
+  amount: number,
+  options: Partial<Omit<CoffeeBatch, 'id' | 'grade' | 'amount'>> = {},
+): CoffeeBatch {
+  const batch: CoffeeBatch = {
+    id: 900 + engine.coffeeBatches.length,
+    lotId: options.lotId ?? null,
+    grade,
+    amount,
+    stage: options.stage ?? 'dry',
+    storage: options.storage ?? 'terreiro',
+    ageMonths: options.ageMonths ?? 0,
+  };
+  engine.coffeeBatches.push(batch);
+  return batch;
+}
+
+function makeMature(engine: SitioEngine, lotIndex = 0): void {
+  const lot = engine.coffeeLots[lotIndex];
+  if (!lot) throw new Error('missing lot');
+  for (let y = lot.y; y < lot.y + lot.h; y++) {
+    for (let x = lot.x; x < lot.x + lot.w; x++) {
+      engine.coffee[engine.index(x, y)] = COFFEE_MATURE;
+    }
+  }
 }
 
 describe('SitioEngine', () => {
@@ -232,15 +270,29 @@ describe('SitioEngine', () => {
     expect(report.harvest).toBe(16);
     expect(report.lost).toBe(0);
     expect(report.sold).toBe(0);
-    expect(report.stock).toBe(16);
+    expect(report.stock).toBe(0);
+    expect(report.dryingStock).toBe(16);
     expect(report.revenue).toBe(0);
     expect(engine.coffee.filter((stage) => stage === COFFEE_MATURE)).toHaveLength(0);
+    expect(engine.coffeeBatches[0]?.stage).toBe('drying');
+    expect(
+      engine.execute({ type: 'sellCoffee', batchId: engine.coffeeBatches[0]?.id ?? 0, amount: 16 }),
+    ).toEqual({ ok: false, reason: 'no-stock' });
 
+    assignAll(engine, { kind: 'idle' });
+    const dried = endMonth(engine);
+    expect(dried.dried).toBe(16);
+    expect(dried.stock).toBe(16);
+    const batch = engine.coffeeBatches[0];
+    if (!batch) throw new Error('missing batch');
+    expect(batch.stage).toBe('dry');
     const coins = engine.coins;
-    expect(engine.execute({ type: 'sellCoffee', grade: 'bad', amount: 16 })).toEqual({ ok: true });
-    expect(engine.marketCart.bad).toBe(16);
+    expect(engine.execute({ type: 'sellCoffee', batchId: batch.id, amount: 16 })).toEqual({
+      ok: true,
+    });
+    expect(engine.marketCart.coffee).toEqual([{ batchId: batch.id, amount: 16 }]);
     endMonth(engine);
-    expect(engine.coffeeStock).toBe(0);
+    expect(engine.coffeeStock()).toBe(0);
     expect(engine.coins).toBe(coins + 16);
   });
 
@@ -263,16 +315,23 @@ describe('SitioEngine', () => {
     const report = endMonth(engine);
     expect(report.harvest).toBe(16);
     expect(report.lost).toBe(0);
-    expect(report.stock).toBe(16);
+    expect(report.stock).toBe(0);
+    expect(report.dryingStock).toBe(16);
     expect(report.revenue).toBe(0);
     expect(engine.coffee.filter((stage) => stage === COFFEE_MATURE)).toHaveLength(0);
 
-    const coins = engine.coins;
-    expect(engine.execute({ type: 'sellCoffee', grade: 'bad', amount: 16 })).toEqual({ ok: true });
-    expect(engine.marketCart.bad).toBe(16);
     assignAll(engine, { kind: 'idle' });
+    const dried = endMonth(engine);
+    expect(dried.dried).toBe(16);
+    expect(dried.stock).toBe(16);
+    const batch = engine.coffeeBatches[0];
+    if (!batch) throw new Error('missing batch');
+    const coins = engine.coins;
+    expect(engine.execute({ type: 'sellCoffee', batchId: batch.id, amount: 16 })).toEqual({
+      ok: true,
+    });
     endMonth(engine);
-    expect(engine.coffeeStock).toBe(0);
+    expect(engine.coffeeStock()).toBe(0);
     expect(engine.coins).toBe(coins + 16);
   });
 
@@ -295,53 +354,52 @@ describe('SitioEngine', () => {
   });
   it('sells coffee only from stock and rejects invalid amounts', () => {
     const engine = setup(create());
-    expect(engine.execute({ type: 'sellCoffee', grade: 'medium', amount: 1 })).toEqual({
+    const missing = 901;
+    expect(engine.execute({ type: 'sellCoffee', batchId: missing, amount: 1 })).toEqual({
       ok: false,
       reason: 'no-stock',
     });
-    engine.coffeeStock = 5;
-    engine.coffeeGrades.medium = 5;
-    expect(engine.execute({ type: 'sellCoffee', grade: 'medium', amount: 0 })).toEqual({
+    const batch = addBatch(engine, 'medium', 5);
+    expect(engine.execute({ type: 'sellCoffee', batchId: batch.id, amount: 0 })).toEqual({
       ok: false,
       reason: 'invalid-amount',
     });
-    expect(engine.execute({ type: 'sellCoffee', grade: 'medium', amount: 1.5 })).toEqual({
+    expect(engine.execute({ type: 'sellCoffee', batchId: batch.id, amount: 1.5 })).toEqual({
       ok: false,
       reason: 'invalid-amount',
     });
-    expect(engine.execute({ type: 'sellCoffee', grade: 'medium', amount: 6 })).toEqual({
+    expect(engine.execute({ type: 'sellCoffee', batchId: batch.id, amount: 6 })).toEqual({
       ok: false,
       reason: 'no-stock',
     });
     const coins = engine.coins;
-    expect(engine.execute({ type: 'sellCoffee', grade: 'medium', amount: 2 })).toEqual({ ok: true });
-    expect(engine.marketCart.medium).toBe(2);
+    expect(engine.execute({ type: 'sellCoffee', batchId: batch.id, amount: 2 })).toEqual({
+      ok: true,
+    });
+    expect(engine.marketCart.coffee).toEqual([{ batchId: batch.id, amount: 2 }]);
     assignAll(engine, { kind: 'idle' });
     const report = endMonth(engine);
-    expect(engine.coffeeStock).toBe(3);
+    expect(engine.coffeeStock()).toBe(3);
     expect(engine.coins).toBe(coins + 4);
     expect(report.sold).toBe(2);
     expect(report.revenue).toBe(4);
     expect(engine.totals.revenueTotal).toBe(4);
   });
 
-  it('caps coffee at the terreiro and tulha capacity', () => {
+  it('accepts four batches on the terreiro and loses the excess', () => {
     const engine = setup(create());
-    engine.coffeeStock = 14;
-    engine.coffeeGrades.bad = 14;
-    engine.turn = 8;
-    for (let x = 6; x < 10; x++) {
-      for (let y = 6; y < 8; y++) engine.coffee[engine.index(x, y)] = COFFEE_MATURE;
+    expect(engine.terreiroSlots()).toBe(TERREIRO_LOT_SLOTS);
+    for (let index = 0; index < TERREIRO_LOT_SLOTS; index++) {
+      addBatch(engine, 'bad', 1);
     }
+    expect(engine.terreiroUsed()).toBe(TERREIRO_LOT_SLOTS);
+    engine.turn = 8;
+    makeMature(engine);
     assignAll(engine, { kind: 'coffee' });
     const report = endMonth(engine);
     expect(report.harvest).toBe(16);
-    expect(report.lost).toBe(14);
-    expect(report.stock).toBe(16);
-    expect(engine.coffeeStock).toBe(16);
-
-    addBuilding(engine, 'tulha', 12, 10, 3, 3);
-    expect(engine.coffeeCapacity()).toBe(22);
+    expect(report.lost).toBe(16);
+    expect(engine.coffeeBatches).toHaveLength(TERREIRO_LOT_SLOTS);
   });
 
   it('adds the venda bonus to the coffee price', () => {
@@ -358,12 +416,22 @@ describe('SitioEngine', () => {
     assignAll(engine, { kind: 'coffee' });
     const report = endMonth(engine);
     expect(report.price).toBe(3);
-    expect(report.stock).toBe(16);
+    expect(report.stock).toBe(0);
+    expect(report.dryingStock).toBe(16);
     expect(report.revenue).toBe(0);
-    expect(engine.execute({ type: 'sellCoffee', grade: 'medium', amount: 16 })).toEqual({ ok: true });
-    expect(engine.marketCart.medium).toBe(16);
+
+    assignAll(engine, { kind: 'idle' });
+    const dried = endMonth(engine);
+    expect(dried.stock).toBe(16);
+    const batch = engine.coffeeBatches[0];
+    if (!batch) throw new Error('missing batch');
+    expect(batch.grade).toBe('medium');
+    expect(engine.execute({ type: 'sellCoffee', batchId: batch.id, amount: 16 })).toEqual({
+      ok: true,
+    });
+    expect(engine.marketCart.coffee).toEqual([{ batchId: batch.id, amount: 16 }]);
     const next = endMonth(engine);
-    expect(engine.coffeeStock).toBe(0);
+    expect(engine.coffeeStock()).toBe(0);
     expect(next.sold).toBe(16);
     expect(next.revenue).toBe(48);
     expect(next.price).toBe(3);
@@ -638,14 +706,14 @@ describe('SitioEngine', () => {
       engine.execute({
         type: 'assign',
         personId: first.id,
-        task: { kind: 'fertilize', x: 6, y: 6 },
+        task: { kind: 'fertilize' },
       }).ok,
     ).toBe(true);
     expect(
       engine.execute({
         type: 'assign',
         personId: second.id,
-        task: { kind: 'limestone', x: 6, y: 6 },
+        task: { kind: 'limestone' },
       }).ok,
     ).toBe(true);
     const applied = endMonth(engine);
@@ -666,10 +734,35 @@ describe('SitioEngine', () => {
     const harvest = endMonth(engine);
     expect(harvest.harvest).toBe(24);
     expect(harvest.harvestGrades.good).toBe(24);
-    expect(harvest.lost).toBe(8);
-    expect(engine.coffeeGrades.good).toBe(16);
+    expect(harvest.lost).toBe(0);
+    expect(harvest.dryingStock).toBe(24);
     expect(lot?.fertilized).toBe(false);
     expect(lot?.limed).toBe(false);
+
+    assignAll(engine, { kind: 'idle' });
+    endMonth(engine);
+    expect(engine.coffeeGrades().good).toBe(24);
+  });
+
+  it('applies global fertilizer to eligible lots in order', () => {
+    const engine = setup(create());
+    const extra = {
+      id: 99,
+      x: 10,
+      y: 10,
+      w: 4,
+      h: 2,
+      fertilized: false,
+      limed: false,
+    };
+    engine.coffeeLots.push(extra);
+    engine.inputStock.fertilizer = 2;
+    assignAll(engine, { kind: 'fertilize' });
+    const report = endMonth(engine);
+    expect(report.fertilized).toBe(2);
+    expect(engine.coffeeLots[0]?.fertilized).toBe(true);
+    expect(extra.fertilized).toBe(true);
+    expect(engine.inputStock.fertilizer).toBe(0);
   });
 
   it('reserves queued market purchases when paying for a building', () => {
@@ -773,6 +866,18 @@ describe('SitioEngine', () => {
     });
   });
 
+  it('marks the coffee lots the current crew will work this month', () => {
+    const engine = setup(create());
+    const person = adults(engine)[0];
+    const lot = engine.coffeeLots[0];
+    if (!person || !lot) throw new Error('missing fixture');
+    expect(coffeeWorkingLotIds(engine)).toEqual([]);
+    engine.execute({ type: 'assign', personId: person.id, task: { kind: 'coffee' } });
+    expect(coffeeWorkingLotIds(engine)).toEqual([lot.id]);
+    engine.execute({ type: 'assign', personId: person.id, task: { kind: 'idle' } });
+    expect(coffeeWorkingLotIds(engine)).toEqual([]);
+  });
+
   it('places one worker at the monthly coffee task', () => {
     const engine = setup(create());
     const person = adults(engine)[0];
@@ -856,14 +961,14 @@ describe('SitioEngine', () => {
       engine.execute({
         type: 'assign',
         personId: fertilizerWorker.id,
-        task: { kind: 'fertilize', x: lot.x, y: lot.y },
+        task: { kind: 'fertilize' },
       }).ok,
     ).toBe(true);
     expect(
       engine.execute({
         type: 'assign',
         personId: limestoneWorker.id,
-        task: { kind: 'limestone', x: lot.x + 1, y: lot.y },
+        task: { kind: 'limestone' },
       }).ok,
     ).toBe(true);
 
@@ -871,7 +976,7 @@ describe('SitioEngine', () => {
     expect(childPlan?.task.kind).toBe('study');
     expect(['boy', 'girl']).toContain(childPlan?.variant);
     expect(fieldMarkers(engine)).toEqual([
-      { lotId: lot.id, fertilizer: true, limestone: true },
+      { lotId: lot.id, fertilizer: 'queued', limestone: 'queued' },
     ]);
   });
 
@@ -1074,19 +1179,20 @@ describe('SitioEngine', () => {
     expect(restored.hash()).toBe(engine.hash());
   });
 
-  it('round-trips the v24 save through the kernel envelope', () => {
-    expect(SITIO_SAVE_VERSION).toBe(24);
+  it('round-trips the v25 save with coffee batches', () => {
+    expect(SITIO_SAVE_VERSION).toBe(25);
     const engine = setup(create());
     assignAll(engine, { kind: 'coffee' });
     endMonth(engine);
-    engine.coffeeStock = 4;
-    engine.coffeeGrades.bad = 4;
+    const batch = addBatch(engine, 'bad', 4, { lotId: engine.coffeeLots[0]?.id ?? null });
     engine.wood = 7;
     engine.inputStock.fertilizer = 2;
     engine.seedlings = 8;
     const child = engine.people.find((person) => person.age < 16);
     if (child) child.educationProgress = 2;
-    engine.execute({ type: 'sellCoffee', grade: 'bad', amount: 1 });
+    expect(engine.execute({ type: 'sellCoffee', batchId: batch.id, amount: 1 })).toEqual({
+      ok: true,
+    });
     const text = stringifySave(
       encodeSitioSave(engine.serialize(), '2026-01-01T00:00:00.000Z'),
     );
@@ -1100,13 +1206,436 @@ describe('SitioEngine', () => {
     expect(decoded.snapshot.inputStock.fertilizer).toBe(2);
     expect(decoded.snapshot.seedlings).toBe(8);
     expect(decoded.snapshot.history).toHaveLength(1);
-    expect(decoded.snapshot.coffeeStock).toBe(4);
-    expect(decoded.snapshot.marketCart.bad).toBe(1);
+    expect(decoded.snapshot.coffeeBatches).toHaveLength(1);
+    expect(decoded.snapshot.marketCart.coffee).toEqual([{ batchId: batch.id, amount: 1 }]);
     expect(decoded.snapshot.wood).toBe(7);
     expect(decoded.snapshot.monthSold).toBe(0);
     expect(decoded.snapshot.monthRevenue).toBe(0);
     const restored = SitioEngine.fromSnapshot(decoded.snapshot);
     expect(restored.hash()).toBe(engine.hash());
+  });
+
+  it('rejects a v24 save because there is no migration', () => {
+    const engine = setup(create());
+    const file = encodeSitioSave(engine.serialize(), '2026-01-01T00:00:00.000Z');
+    const text = stringifySave({
+      ...file,
+      version: 24,
+      checksum: saveChecksum(file.state),
+    });
+    const decoded = decodeSitioSave(text);
+    expect(decoded.ok).toBe(false);
+    if (decoded.ok) return;
+    expect(decoded.errors[0]?.code).toBe('UNSUPPORTED_VERSION');
+  });
+
+  it('moves dry coffee to the tulha automatically', () => {
+    const engine = setup(create());
+    addBuilding(engine, 'tulha', 12, 10, 3, 3);
+    const batch = addBatch(engine, 'medium', 10, { storage: 'terreiro' });
+    assignAll(engine, { kind: 'idle' });
+    const report = endMonth(engine);
+    expect(batch.storage).toBe('tulha');
+    expect(batch.ageMonths).toBe(0);
+    expect(engine.tulhaUsed()).toBe(10);
+    expect(report.dryStock).toBe(10);
+    expect(report.spoiled).toBe(0);
+  });
+
+  it('respects the 256-sack tulha capacity and lets the excess age', () => {
+    const engine = setup(create());
+    addBuilding(engine, 'tulha', 12, 10, 3, 3);
+    const first = addBatch(engine, 'bad', 200);
+    const second = addBatch(engine, 'medium', 100);
+    assignAll(engine, { kind: 'idle' });
+    endMonth(engine);
+    expect(first.storage).toBe('tulha');
+    expect(second.storage).toBe('terreiro');
+    expect(second.ageMonths).toBe(1);
+    expect(engine.tulhaUsed()).toBe(200);
+    expect(engine.tulhaCapacity()).toBe(TULHA_CAPACITY);
+  });
+
+  it('keeps coffee in the tulha from aging or spoiling', () => {
+    const engine = setup(create());
+    addBuilding(engine, 'tulha', 12, 10, 3, 3);
+    const batch = addBatch(engine, 'good', 8);
+    engine.food = 100;
+    engine.coins = 100;
+    assignAll(engine, { kind: 'idle' });
+    for (let month = 0; month < 4; month++) endMonth(engine);
+    expect(batch.storage).toBe('tulha');
+    expect(batch.stage).toBe('dry');
+    expect(batch.ageMonths).toBe(0);
+    expect(batch.amount).toBe(8);
+  });
+
+  it('applies 100, 66 and 33 percent to dry coffee on the terreiro', () => {
+    const engine = setup(create());
+    engine.coffeePrice = 10;
+    const batch = addBatch(engine, 'medium', 10);
+    expect(engine.coffeePriceForBatch(batch)).toBe(10);
+    batch.ageMonths = 1;
+    expect(engine.coffeePriceForBatch(batch)).toBe(7);
+    batch.ageMonths = 2;
+    expect(engine.coffeePriceForBatch(batch)).toBe(3);
+  });
+
+  it('discards dry coffee after three months without a tulha', () => {
+    const engine = setup(create());
+    const batch = addBatch(engine, 'good', 5, { ageMonths: 2 });
+    assignAll(engine, { kind: 'idle' });
+    const report = endMonth(engine);
+    expect(report.spoiled).toBe(5);
+    expect(engine.coffeeBatches.some((entry) => entry.id === batch.id)).toBe(false);
+    expect(engine.coffeeStock()).toBe(0);
+  });
+
+  it('requires a tulha for the forno and builds it once for 5 coins and 2 wood', () => {
+    const engine = setup(create());
+    expect(engine.execute({ type: 'build', kind: 'forno', x: 12, y: 1 })).toEqual({
+      ok: false,
+      reason: 'prereq',
+    });
+    addBuilding(engine, 'tulha', 1, 1, 3, 3);
+    const coins = engine.coins;
+    const wood = engine.wood;
+    const built = engine.execute({ type: 'build', kind: 'forno', x: 12, y: 1 });
+    expect(built.ok).toBe(true);
+    expect(engine.coins).toBe(coins - 5);
+    expect(engine.wood).toBe(wood - 2);
+    expect(engine.sites[0]).toMatchObject({ kind: 'forno', required: 2, w: 2, h: 2 });
+    expect(engine.execute({ type: 'build', kind: 'forno', x: 3, y: 1 })).toEqual({
+      ok: false,
+      reason: 'unique',
+    });
+    expect(BUILDING_FORNO).toBe(8);
+  });
+
+  it('validates the roast task against kiln, dry coffee, wood and other adults', () => {
+    const engine = setup(create());
+    addBuilding(engine, 'forno', 12, 1, 2, 2);
+    const people = adults(engine);
+    const first = people[0];
+    const second = people[1];
+    if (!first || !second) throw new Error('missing adults');
+    expect(
+      engine.execute({ type: 'assign', personId: first.id, task: { kind: 'roast' } }),
+    ).toEqual({ ok: false, reason: 'no-stock' });
+    addBatch(engine, 'medium', 4);
+    engine.wood = 0;
+    expect(
+      engine.execute({ type: 'assign', personId: first.id, task: { kind: 'roast' } }),
+    ).toEqual({ ok: false, reason: 'no-wood' });
+    engine.wood = 2;
+    expect(
+      engine.execute({ type: 'assign', personId: first.id, task: { kind: 'roast' } }).ok,
+    ).toBe(true);
+    expect(
+      engine.execute({ type: 'assign', personId: second.id, task: { kind: 'roast' } }),
+    ).toEqual({ ok: false, reason: 'reserved' });
+    const child = engine.people.find((person) => person.age < 16);
+    if (child) {
+      expect(
+        engine.execute({ type: 'assign', personId: child.id, task: { kind: 'roast' } }),
+      ).toEqual({ ok: false, reason: 'not-adult' });
+    }
+  });
+
+  it('roasts one batch, uses one wood and reports it', () => {
+    const engine = setup(create());
+    addBuilding(engine, 'forno', 12, 1, 2, 2);
+    const batch = addBatch(engine, 'medium', 4);
+    addBatch(engine, 'bad', 2, { storage: 'tulha' });
+    engine.wood = 3;
+    const person = adults(engine)[0];
+    const other = adults(engine)[1];
+    if (!person || !other) throw new Error('missing adults');
+    engine.execute({ type: 'assign', personId: person.id, task: { kind: 'roast' } });
+    engine.execute({ type: 'assign', personId: other.id, task: { kind: 'idle' } });
+    const report = endMonth(engine);
+    expect(batch.stage).toBe('roasted');
+    expect(batch.storage).toBe('forno');
+    expect(batch.ageMonths).toBe(0);
+    expect(engine.wood).toBe(2);
+    expect(report.roasted).toBe(4);
+    expect(report.roastWood).toBe(1);
+    expect(report.roastedStock).toBe(4);
+  });
+
+  it('roasts the oldest dry batch, breaking ties by id', () => {
+    const engine = setup(create());
+    addBuilding(engine, 'forno', 12, 1, 2, 2);
+    const younger = addBatch(engine, 'medium', 3, { ageMonths: 1 });
+    const older = addBatch(engine, 'good', 2, { ageMonths: 2 });
+    engine.wood = 1;
+    const person = adults(engine)[0];
+    const other = adults(engine)[1];
+    if (!person || !other) throw new Error('missing adults');
+    engine.execute({ type: 'assign', personId: person.id, task: { kind: 'roast' } });
+    engine.execute({ type: 'assign', personId: other.id, task: { kind: 'idle' } });
+    endMonth(engine);
+    expect(older.stage).toBe('roasted');
+    expect(younger.stage).toBe('dry');
+  });
+
+  it('adds two coins per sack for roasted coffee', () => {
+    const engine = setup(create());
+    const batch = addBatch(engine, 'medium', 4);
+    const dry = coffeeBatchValue(batch, engine.salePrice());
+    batch.stage = 'roasted';
+    batch.storage = 'forno';
+    expect(dry).toBe(2);
+    expect(coffeeBatchValue(batch, engine.salePrice())).toBe(4);
+    expect(engine.coffeePriceForBatch(batch)).toBe(4);
+  });
+
+  it('does not age roasted coffee', () => {
+    const engine = setup(create());
+    const batch = addBatch(engine, 'medium', 4, {
+      stage: 'roasted',
+      storage: 'forno',
+    });
+    engine.food = 100;
+    assignAll(engine, { kind: 'idle' });
+    for (let month = 0; month < 3; month++) endMonth(engine);
+    expect(batch.stage).toBe('roasted');
+    expect(batch.ageMonths).toBe(0);
+    expect(batch.amount).toBe(4);
+  });
+
+  it('reserves coffee by batch and calculates the exact revenue', () => {
+    const engine = setup(create());
+    const batch = addBatch(engine, 'medium', 10);
+    expect(engine.execute({ type: 'sellCoffee', batchId: batch.id, amount: 4 }).ok).toBe(true);
+    expect(engine.execute({ type: 'sellCoffee', batchId: batch.id, amount: 3 }).ok).toBe(true);
+    expect(engine.marketCart.coffee).toEqual([{ batchId: batch.id, amount: 7 }]);
+    expect(engine.execute({ type: 'sellCoffee', batchId: batch.id, amount: 4 })).toEqual({
+      ok: false,
+      reason: 'no-stock',
+    });
+    const coins = engine.coins;
+    assignAll(engine, { kind: 'idle' });
+    const report = endMonth(engine);
+    expect(batch.amount).toBe(3);
+    expect(report.sold).toBe(7);
+    expect(report.revenue).toBe(14);
+    expect(engine.coins).toBe(coins + 14);
+    expect(engine.marketCart.coffee).toEqual([]);
+  });
+
+  it('distinguishes applied and queued field inputs', () => {
+    const engine = setup(create());
+    const lot = engine.coffeeLots[0];
+    if (!lot) throw new Error('missing lot');
+    engine.inputStock.fertilizer = 1;
+    engine.inputStock.limestone = 1;
+    const people = adults(engine);
+    const first = people[0];
+    const second = people[1];
+    if (!first || !second) throw new Error('missing adults');
+    expect(
+      engine.execute({
+        type: 'assign',
+        personId: first.id,
+        task: { kind: 'fertilize' },
+      }).ok,
+    ).toBe(true);
+    expect(
+      engine.execute({
+        type: 'assign',
+        personId: second.id,
+        task: { kind: 'limestone' },
+      }).ok,
+    ).toBe(true);
+    lot.fertilized = true;
+    expect(fieldMarkers(engine)).toEqual([
+      { lotId: lot.id, fertilizer: 'applied', limestone: 'queued' },
+    ]);
+    lot.fertilized = false;
+    lot.limed = true;
+    expect(fieldMarkers(engine)).toEqual([
+      { lotId: lot.id, fertilizer: 'queued', limestone: 'applied' },
+    ]);
+  });
+
+  it('does not allow footprints to overlap buildings, planned roads or planting orders', () => {
+    const engine = setup(create());
+    expect(engine.execute({ type: 'build', kind: 'house', x: 3, y: 5 })).toEqual({
+      ok: false,
+      reason: 'occupied',
+    });
+    expect(engine.execute({ type: 'planRoad', x: 5, y: 1 })).toEqual({ ok: true });
+    expect(engine.execute({ type: 'build', kind: 'house', x: 5, y: 1 })).toEqual({
+      ok: false,
+      reason: 'occupied',
+    });
+    engine.plantOrders.push({
+      id: 99,
+      x: 14,
+      y: 9,
+      w: 4,
+      h: 2,
+      progress: 0,
+      required: 2,
+    });
+    expect(engine.execute({ type: 'build', kind: 'house', x: 14, y: 9 })).toEqual({
+      ok: false,
+      reason: 'occupied',
+    });
+
+    const starter = create();
+    place(starter, 'sede', 6, 2);
+    expect(starter.canPlaceStarter('house', 6, 2)).toEqual({
+      ok: false,
+      reason: 'occupied',
+    });
+  });
+
+  it('demolishes an empty building and recovers half of its wood', () => {
+    const engine = setup(create());
+    addBuilding(engine, 'house', 12, 1, 2, 2);
+    const structure = engine.structures.find((entry) => entry.kind === 'house' && entry.x === 12);
+    if (!structure) throw new Error('missing house');
+    const wood = engine.wood;
+    expect(engine.execute({ type: 'demolish', structureId: structure.id })).toEqual({
+      ok: true,
+    });
+    expect(engine.wood).toBe(wood + demolishRecovery('house'));
+    expect(engine.structureById(structure.id)).toBeNull();
+    expect(engine.buildingAt(12, 1)).toBe(BUILDING_NONE);
+    expect(engine.canPlaceBuilding('house', 12, 1)).toEqual({ ok: true });
+    expect(engine.execute({ type: 'demolish', structureId: 9999 })).toEqual({
+      ok: false,
+      reason: 'no-structure',
+    });
+  });
+
+  it('blocks demolition of buildings that are in use', () => {
+    const engine = setup(create());
+    const sede = engine.structures.find((entry) => entry.kind === 'sede');
+    const house = engine.structures.find((entry) => entry.kind === 'house');
+    const terreiro = engine.structures.find((entry) => entry.kind === 'terreiro');
+    if (!sede || !house || !terreiro) throw new Error('missing starter');
+    expect(engine.execute({ type: 'demolish', structureId: sede.id })).toEqual({
+      ok: false,
+      reason: 'in-use',
+    });
+    expect(engine.execute({ type: 'demolish', structureId: house.id })).toEqual({
+      ok: false,
+      reason: 'in-use',
+    });
+
+    addBatch(engine, 'medium', 4);
+    expect(engine.execute({ type: 'demolish', structureId: terreiro.id })).toEqual({
+      ok: false,
+      reason: 'in-use',
+    });
+
+    addBuilding(engine, 'tulha', 12, 1, 3, 3);
+    const tulha = engine.structures.find((entry) => entry.kind === 'tulha');
+    if (!tulha) throw new Error('missing tulha');
+    addBatch(engine, 'good', 2, { storage: 'tulha' });
+    expect(engine.execute({ type: 'demolish', structureId: tulha.id })).toEqual({
+      ok: false,
+      reason: 'in-use',
+    });
+
+    addBuilding(engine, 'forno', 16, 5, 2, 2);
+    const forno = engine.structures.find((entry) => entry.kind === 'forno');
+    if (!forno) throw new Error('missing forno');
+    addBatch(engine, 'good', 2, { stage: 'roasted', storage: 'forno' });
+    expect(engine.execute({ type: 'demolish', structureId: forno.id })).toEqual({
+      ok: false,
+      reason: 'in-use',
+    });
+  });
+
+  it('resets study and roast tasks when their building is demolished', () => {
+    const engine = setup(create());
+    addBuilding(engine, 'escola', 20, 5, 2, 2);
+    const child = engine.people.find((person) => person.age < 16);
+    const adult = adults(engine)[0];
+    if (!child || !adult) throw new Error('missing people');
+    expect(
+      engine.execute({ type: 'assign', personId: child.id, task: { kind: 'study' } }).ok,
+    ).toBe(true);
+    const school = engine.structures.find((entry) => entry.kind === 'escola');
+    if (!school) throw new Error('missing school');
+    expect(engine.execute({ type: 'demolish', structureId: school.id }).ok).toBe(true);
+    expect(child.task.kind).toBe('yard');
+
+    addBuilding(engine, 'forno', 16, 5, 2, 2);
+    addBatch(engine, 'medium', 4);
+    engine.wood = 2;
+    expect(engine.execute({ type: 'assign', personId: adult.id, task: { kind: 'roast' } }).ok).toBe(
+      true,
+    );
+    const forno = engine.structures.find((entry) => entry.kind === 'forno');
+    if (!forno) throw new Error('missing forno');
+    expect(engine.execute({ type: 'demolish', structureId: forno.id }).ok).toBe(true);
+    expect(adult.task.kind).toBe('yard');
+  });
+
+  it('builds a complete, non-overlapping test farm', () => {
+    const options = { name: 'Teste', seed: 'teste', preset: 'test' as const };
+    const engine = SitioEngine.create(options);
+    expect(engine.setup).toBeNull();
+    expect(engine.turn).toBe(8);
+    expect(engine.families).toHaveLength(6);
+    expect(engine.coffeeLots).toHaveLength(3);
+    expect(engine.sites).toHaveLength(0);
+    expect(engine.roadPlan.length).toBeGreaterThan(0);
+    expect(engine.coffeeDry()).toBeGreaterThan(0);
+    expect(engine.coffeeRoasted()).toBeGreaterThan(0);
+    expect(engine.tulhaUsed()).toBeGreaterThan(0);
+    expect(engine.terreiroUsed()).toBeGreaterThan(0);
+    expect(engine.reputation()).toBe(4);
+
+    const kinds = new Set(engine.structures.map((entry) => entry.kind));
+    for (const kind of [
+      'sede',
+      'house',
+      'terreiro',
+      'tulha',
+      'forno',
+      'venda',
+      'escola',
+      'capela',
+    ]) {
+      expect(kinds.has(kind as BuildingKind | 'sede'), kind).toBe(true);
+    }
+
+    const cells = new Set<string>();
+    for (const structure of engine.structures) {
+      for (let y = structure.y; y < structure.y + structure.h; y++) {
+        for (let x = structure.x; x < structure.x + structure.w; x++) {
+          const key = `${x},${y}`;
+          expect(cells.has(key), key).toBe(false);
+          cells.add(key);
+        }
+      }
+    }
+
+    const again = SitioEngine.create(options);
+    expect(again.hash()).toBe(engine.hash());
+  });
+
+  it('hashes coffee batches deterministically', () => {
+    const run = () => {
+      const engine = setup(create('batches'));
+      addBatch(engine, 'good', 12, { ageMonths: 1 });
+      addBatch(engine, 'bad', 3, { stage: 'drying' });
+      addBatch(engine, 'medium', 5, {
+        stage: 'roasted',
+        storage: 'forno',
+        ageMonths: 0,
+      });
+      assignAll(engine, { kind: 'idle' });
+      endMonth(engine);
+      return engine.hash();
+    };
+    expect(run()).toBe(run());
   });
 
   it('is deterministic for the same seed and commands', () => {

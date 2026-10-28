@@ -1,9 +1,12 @@
 import {
   BUILDING_SPECS,
   BUILDING_VENDA,
-  coffeeHarvestForecast,
-  COFFEE_GRADES,
   COFFEE_LOT_SEEDLINGS,
+  COFFEE_MAX_DRY_MONTHS,
+  coffeeAgeMultiplier,
+  coffeeBatchValue,
+  coffeeHarvestForecast,
+  coffeeWorkingLotIds,
   EDUCATION_PERIODS,
   FAMILY_INVITE_COST,
   FAMILY_NEED,
@@ -12,9 +15,10 @@ import {
   SEEDLING_BUNDLE_PRICE,
   SEEDLING_BUNDLE_SIZE,
   STARTER_FOOTPRINTS,
+  TULHA_CAPACITY,
   WOOD_BUY_PRICE,
   type BuildingKind,
-  type CoffeeGrade,
+  type CoffeeBatch,
   type CoffeePlantOrder,
   type Family,
   type InputKind,
@@ -32,9 +36,10 @@ import {
 } from '@sitio/chrome';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { fieldMarkers } from './actors';
+import { HudBar } from './hud';
 import { LOCALES, LOCALE_LABELS, useStrings, type Strings } from './i18n';
-import { FamilyPortraits } from './portrait';
-import { SitioSession, type Panel } from './session';
+import { AtlasSprite, FamilyPortraits, GuidePortrait } from './portrait';
+import { SitioSession, type Panel, type PendingDemolish } from './session';
 
 const MARK = `${import.meta.env.BASE_URL}favicon.svg`;
 
@@ -137,6 +142,16 @@ function Menu({ session }: { session: SitioSession }) {
           >
             {t.newGame}
           </button>
+          {import.meta.env.DEV ? (
+            <button
+              type="button"
+              className="button"
+              data-testid="sitio-test-farm"
+              onClick={() => void session.newTestFarm()}
+            >
+              {t.testFarm}
+            </button>
+          ) : null}
           {latest ? (
             <button
               type="button"
@@ -211,6 +226,7 @@ function Game({ session }: { session: SitioSession }) {
   const tool = useStore(session.ui, (ui) => ui.tool);
   const activePanel = useStore(session.ui, (ui) => ui.activePanel);
   const pendingLand = useStore(session.ui, (ui) => ui.pendingLand);
+  const pendingDemolish = useStore(session.ui, (ui) => ui.pendingDemolish);
   const reportOpen = useStore(session.ui, (ui) => ui.reportOpen);
   const endingOpen = useStore(session.ui, (ui) => ui.endingOpen);
   if (!state) return null;
@@ -221,57 +237,7 @@ function Game({ session }: { session: SitioSession }) {
 
   return (
     <>
-      <header className="topbar">
-        <div className="brand">
-          <Logo size={30} title={t.title} markUrl={MARK} />
-        </div>
-        <div className="clock">
-          <strong>{t.season[state.season]}</strong>
-          <span>
-            {t.month} {state.monthOfSeason} · {t.year} {state.year}
-          </span>
-        </div>
-        <Resource icon="families" label={t.families} value={state.families.length} />
-        <Resource icon="coins" label={t.coins} value={state.coins} />
-        <Resource icon="food" label={t.food} value={`${state.food}/${state.foodCapacity}`} />
-        <Resource icon="wood" label={t.wood} value={state.wood} />
-        <Resource icon="fertilizer" label={t.fertilizer} value={state.inputStock.fertilizer} />
-        <Resource icon="limestone" label={t.limestone} value={state.inputStock.limestone} />
-        <Resource
-          icon="stock"
-          label={t.stock}
-          value={`${state.coffeeStock}/${state.coffeeCapacity}`}
-        />
-        <Resource icon="price" label={t.price} value={salePrice} />
-        <Resource icon="reputation" label={t.reputation} value={state.reputation} />
-        <span className={`status status-${state.status}`}>{t.status[state.status]}</span>
-        <div className="top-actions">
-          <button type="button" className="button small" onClick={() => void session.save()}>
-            {t.save}
-          </button>
-          <button type="button" className="button small" onClick={() => session.exportFile()}>
-            {t.export}
-          </button>
-          <label className="button small file-button">
-            {t.import}
-            <input
-              type="file"
-              accept=".json"
-              hidden
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (!file) return;
-                void file.text().then((text) => session.loadFile(text));
-                event.target.value = '';
-              }}
-            />
-          </label>
-          <button type="button" className="button small" onClick={() => session.backToMenu()}>
-            {t.menu}
-          </button>
-          <LocalePicker session={session} />
-        </div>
-      </header>
+      <HudBar session={session} state={state} t={t} salePrice={salePrice} />
 
       <aside
         className={`side-panel book-panel ${activePanel ? 'open' : ''} ${
@@ -328,8 +294,18 @@ function Game({ session }: { session: SitioSession }) {
                     sites={state.sites}
                     plantOrders={state.plantOrders}
                     hasSchool={state.structures.some((structure) => structure.kind === 'escola')}
-                    fertilizer={state.inputStock.fertilizer + state.marketCart.fertilizer}
-                    limestone={state.inputStock.limestone + state.marketCart.limestone}
+                    hasForno={state.structures.some((structure) => structure.kind === 'forno')}
+                    hasDryCoffee={state.coffeeDry > 0}
+                    hasRoastWood={state.wood + state.marketCart.wood >= 1}
+                    roastBusy={state.people.some((person) => person.task.kind === 'roast')}
+                    canFertilize={
+                      state.coffeeLots.some((lot) => !lot.fertilized) &&
+                      state.inputStock.fertilizer + state.marketCart.fertilizer >= 1
+                    }
+                    canLime={
+                      state.coffeeLots.some((lot) => !lot.limed) &&
+                      state.inputStock.limestone + state.marketCart.limestone >= 1
+                    }
                     t={t}
                     onAssign={(personId, task) =>
                       void session.assignTask(personId, task)
@@ -366,6 +342,14 @@ function Game({ session }: { session: SitioSession }) {
                 >
                   <Icon name="road" /> {t.road}
                 </button>
+                <button
+                  type="button"
+                  className={`button small ${tool === 'demolish' ? 'active' : ''}`}
+                  data-testid="sitio-tool-demolish"
+                  onClick={() => session.setTool('demolish')}
+                >
+                  <Icon name="demolish" /> {t.tools.demolish}
+                </button>
               </div>
               {state.roadPlan.length > 0 ? (
                 <p className="hint">
@@ -383,11 +367,22 @@ function Game({ session }: { session: SitioSession }) {
                 {(Object.keys(BUILDING_SPECS) as BuildingKind[]).map((kind) => {
                   const spec = BUILDING_SPECS[kind];
                   const lock = buildLock(kind, state);
+                  const requirements = [
+                    (spec.prereq ?? []).length > 0
+                      ? `${t.requires} ${(spec.prereq ?? [])
+                          .map((entry) => t.tools[entry])
+                          .join(', ')}`
+                      : null,
+                    spec.unique ? t.unique : null,
+                  ].filter((entry): entry is string => Boolean(entry));
                   return (
                     <button
                       key={kind}
                       type="button"
-                      className={`button build ${tool === kind ? 'active' : ''}`}
+                      className={`button build ${tool === kind ? 'active' : ''} ${
+                        lock ? 'locked' : ''
+                      }`}
+                      data-testid={`sitio-build-${kind}`}
                       disabled={lock !== null}
                       onClick={() => session.setTool(kind)}
                     >
@@ -399,21 +394,21 @@ function Game({ session }: { session: SitioSession }) {
                         {spec.coins} {t.coins.toLowerCase()} · {spec.wood}{' '}
                         {t.wood.toLowerCase()} · {spec.days} {t.months.toLowerCase()}
                       </small>
-                      {lock ? (
-                        <em>
-                          {lock === 'unique'
-                            ? t.unique
-                            : `${t.requires} ${(spec.prereq ?? [])
-                                .map((entry) => t.tools[entry])
-                                .join(', ')}`}
-                        </em>
+                      {requirements.length > 0 ? (
+                        <em>{requirements.join(' · ')}</em>
                       ) : null}
                     </button>
                   );
                 })}
               </div>
               <p className="hint">
-                {tool === 'select' ? t.hint : tool === 'road' ? t.hintRoad : t.hintBuild}
+                {tool === 'select'
+                  ? t.hint
+                  : tool === 'road'
+                    ? t.hintRoad
+                    : tool === 'demolish'
+                      ? t.hintDemolish
+                      : t.hintBuild}
               </p>
             </section>
 
@@ -443,7 +438,7 @@ function Game({ session }: { session: SitioSession }) {
             </section>
             </div>
 
-            <CoffeePage session={session} state={state} t={t} />
+            <CoffeePage session={session} state={state} t={t} salePrice={salePrice} />
             <ReportsPage state={state} t={t} />
           </>
         )}
@@ -458,6 +453,9 @@ function Game({ session }: { session: SitioSession }) {
       ) : endingOpen ? (
         <EndingModal session={session} state={state} t={t} />
       ) : null}
+      {pendingDemolish ? (
+        <DemolishModal session={session} pending={pendingDemolish} t={t} />
+      ) : null}
     </>
   );
 }
@@ -466,19 +464,28 @@ function CoffeePage({
   session,
   state,
   t,
+  salePrice,
 }: {
   session: SitioSession;
   state: SitioFullState;
   t: Strings;
+  salePrice: number;
 }) {
   const canPlant = state.seedlings >= COFFEE_LOT_SEEDLINGS;
   const forecasts = new Map(
     coffeeHarvestForecast(state).map((forecast) => [forecast.lotId, forecast]),
   );
   const markers = new Map(fieldMarkers(state).map((marker) => [marker.lotId, marker]));
+  const workingLots = new Set(coffeeWorkingLotIds(state));
+  const terreiroBatches = state.coffeeBatches.filter(
+    (batch) => batch.storage === 'terreiro',
+  );
+  const tulhaBatches = state.coffeeBatches.filter((batch) => batch.storage === 'tulha');
+  const hasForno = state.structures.some((structure) => structure.kind === 'forno');
+  const forno = BUILDING_SPECS.forno;
   return (
     <div className="panel-section panel-coffee">
-      <section>
+      <section className="coffee-actions">
         <h2>
           <Icon name="stock" />
           {t.task.coffee}
@@ -496,7 +503,7 @@ function CoffeePage({
         </button>
         <p className="hint">{t.plantCoffeeHint}</p>
       </section>
-      <section>
+      <section className="coffee-orders">
         <h2>{t.plantingOrders}</h2>
         {state.plantOrders.length === 0 ? (
           <p className="muted">{t.noPlantingOrders}</p>
@@ -517,50 +524,62 @@ function CoffeePage({
           </ul>
         )}
       </section>
-      <section>
+      <section className="coffee-lots">
         <h2>{t.coffeeLots}</h2>
         {state.coffeeLots.length === 0 ? (
           <p className="muted">{t.noCoffeeLots}</p>
         ) : (
-          <ul className="site-list">
+          <ul className="coffee-lot-grid">
             {state.coffeeLots.map((lot) => {
               const forecast = forecasts.get(lot.id);
               const marker = markers.get(lot.id);
-              const applied = [
-                lot.fertilized ? t.fertilizer : null,
-                lot.limed ? t.limestone : null,
-              ].filter((entry): entry is string => Boolean(entry));
               return (
-                <li key={lot.id}>
-                  <div>
+                <li key={lot.id} className="coffee-lot-card">
+                  <div className="coffee-lot-head">
                     <strong>
                       {lot.w}×{lot.h} · {lot.x},{lot.y}
                     </strong>
-                    {applied.length > 0 ? (
-                      <span className="muted small">{applied.join(' · ')}</span>
-                    ) : null}
-                    {marker?.fertilizer ? (
-                      <span className="queued-input" title={t.queued}>
-                        <Icon name="fertilizer" />
-                      </span>
-                    ) : null}
-                    {marker?.limestone ? (
-                      <span className="queued-input" title={t.queued}>
-                        <Icon name="limestone" />
-                      </span>
-                    ) : null}
-                    <span className="muted small lot-forecast">
-                      <Icon name="clock" />
-                      {forecast?.firstHarvestMonth != null
-                        ? `${t.firstHarvest}: ${forecast.firstHarvestMonth} ${t.months}`
-                        : t.noCoffeeWork}
-                      {forecast?.firstHarvestMonth != null &&
-                      forecast.completeHarvestMonth != null &&
-                      forecast.completeHarvestMonth !== forecast.firstHarvestMonth
-                        ? ` · ${t.completeHarvest}: ${forecast.completeHarvestMonth} ${t.months}`
-                        : ''}
+                    <span className="lot-badges">
+                      {workingLots.has(lot.id) ? (
+                        <span className="lot-badge working" title={t.working}>
+                          <Icon name="worker" />
+                        </span>
+                      ) : null}
+                      {marker?.fertilizer ? (
+                        <span
+                          className={`lot-badge ${marker.fertilizer}`}
+                          title={
+                            marker.fertilizer === 'applied'
+                              ? t.fertilized
+                              : t.fertilizerQueued
+                          }
+                        >
+                          <Icon name="fertilizer" />
+                        </span>
+                      ) : null}
+                      {marker?.limestone ? (
+                        <span
+                          className={`lot-badge ${marker.limestone}`}
+                          title={
+                            marker.limestone === 'applied' ? t.limed : t.limestoneQueued
+                          }
+                        >
+                          <Icon name="limestone" />
+                        </span>
+                      ) : null}
                     </span>
                   </div>
+                  <span className="muted small lot-forecast">
+                    <Icon name="clock" />
+                    {forecast?.firstHarvestMonth != null
+                      ? `${t.firstHarvest}: ${forecast.firstHarvestMonth} ${t.months}`
+                      : t.noCoffeeWork}
+                    {forecast?.firstHarvestMonth != null &&
+                    forecast.completeHarvestMonth != null &&
+                    forecast.completeHarvestMonth !== forecast.firstHarvestMonth
+                      ? ` · ${t.completeHarvest}: ${forecast.completeHarvestMonth} ${t.months}`
+                      : ''}
+                  </span>
                 </li>
               );
             })}
@@ -568,7 +587,134 @@ function CoffeePage({
         )}
         {state.coffeeLots.length > 0 ? <p className="hint">{t.forecastHint}</p> : null}
       </section>
+      <div className="coffee-storage-column">
+      <section className="coffee-storage">
+        <h2>
+          <Icon name="terreiro" />
+          {t.terreiroSlots}{' '}
+          <span className="count">
+            {state.terreiroUsed}/{state.terreiroSlots}
+          </span>
+        </h2>
+        {terreiroBatches.length === 0 ? (
+          <p className="muted">{t.report.none}</p>
+        ) : (
+          <ul className="coffee-batch-list">
+            {terreiroBatches.map((batch) => (
+              <CoffeeBatchLine
+                key={batch.id}
+                batch={batch}
+                t={t}
+                salePrice={salePrice}
+                showAge
+              />
+            ))}
+          </ul>
+        )}
+      </section>
+      <section className="coffee-storage">
+        <h2>
+          <Icon name="tulha" />
+          {t.tulhaCapacity}{' '}
+          <span className="count">
+            {state.tulhaUsed}/{TULHA_CAPACITY}
+          </span>
+        </h2>
+        <p className="muted small">{t.tulhaStable}</p>
+        {tulhaBatches.length === 0 ? (
+          <p className="muted">{t.noDryCoffee}</p>
+        ) : (
+          <ul className="coffee-batch-list">
+            {tulhaBatches.map((batch) => (
+              <CoffeeBatchLine
+                key={batch.id}
+                batch={batch}
+                t={t}
+                salePrice={salePrice}
+              />
+            ))}
+          </ul>
+        )}
+      </section>
+      <section className="coffee-storage">
+        <h2>
+          <Icon name="forno" />
+          {t.forno}
+        </h2>
+        {hasForno ? (
+          <>
+            <p className="muted small">
+              {t.roastWood}: {state.wood + state.marketCart.wood}
+            </p>
+            <p className="muted small">
+              {t.dryCoffee}: {state.coffeeDry} {t.sacks}
+            </p>
+            <p className="hint">{t.roastHint}</p>
+            {state.coffeeDry < 1 ? <p className="muted small">{t.noDryCoffee}</p> : null}
+            {state.people.some((person) => person.task.kind === 'roast') ? (
+              <p className="muted small">{t.roastBusy}</p>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <p className="muted small">{t.noForno}</p>
+            <p className="muted small">
+              {forno.coins} {t.coins.toLowerCase()} · {forno.wood}{' '}
+              {t.wood.toLowerCase()} · {forno.days} {t.months.toLowerCase()}
+            </p>
+            <p className="muted small">
+              {t.requires} {t.tools.tulha}
+            </p>
+          </>
+        )}
+      </section>
+      </div>
     </div>
+  );
+}
+
+function CoffeeBatchLine({
+  batch,
+  t,
+  salePrice,
+  showAge = false,
+}: {
+  batch: CoffeeBatch;
+  t: Strings;
+  salePrice: number;
+  showAge?: boolean;
+}) {
+  const price = coffeeBatchValue(batch, salePrice);
+  const multiplier = Math.round(coffeeAgeMultiplier(batch.ageMonths) * 100);
+  return (
+    <li className="coffee-batch">
+      <span className={`grade grade-${batch.grade}`}>{t.grade[batch.grade]}</span>
+      <span className="muted small">
+        {batch.amount} {t.sacks}
+      </span>
+      {batch.stage === 'drying' ? (
+        <span className="muted small">{t.drying}</span>
+      ) : (
+        <>
+          {showAge ? (
+            <span className="muted small">
+              {t.ageMonths}: {batch.ageMonths}
+            </span>
+          ) : null}
+          <span className="muted small">{multiplier}%</span>
+          <strong>
+            {price} {t.coins.toLowerCase()}
+          </strong>
+        </>
+      )}
+      {showAge &&
+      batch.stage === 'dry' &&
+      batch.ageMonths >= COFFEE_MAX_DRY_MONTHS - 1 ? (
+        <span className="warning small">
+          {t.spoilsIn}: 1 {t.months}
+        </span>
+      ) : null}
+    </li>
   );
 }
 function ReportsPage({ state, t }: { state: SitioFullState; t: Strings }) {
@@ -585,7 +731,7 @@ function ReportsPage({ state, t }: { state: SitioFullState; t: Strings }) {
         ) : (
           <LineChart
             labels={[t.balance, t.income, t.expenses]}
-            colors={['#e0a84a', '#8fbf6a', '#c85a44']}
+            colors={['#b7791f', '#4f7a3a', '#a33f2f']}
             series={[
               history.map((point) => point.coins),
               history.map((point) => point.income),
@@ -605,7 +751,7 @@ function ReportsPage({ state, t }: { state: SitioFullState; t: Strings }) {
         ) : (
           <LineChart
             labels={[t.grade.bad, t.grade.medium, t.grade.good]}
-            colors={['#c85a44', '#d8b36a', '#8fbf6a']}
+            colors={['#a33f2f', '#8a6a2a', '#4f7a3a']}
             series={[
               history.map((point) => point.harvest.bad),
               history.map((point) => point.harvest.medium),
@@ -683,48 +829,39 @@ function BookNav({
     { key: 'reports', label: t.reports, icon: 'chart' },
   ];
   return (
-    <nav className="book-nav" aria-label={t.title}>
-      {tabs.map((tab) => (
-        <button
-          key={tab.key}
-          type="button"
-          className={activePanel === tab.key ? 'active' : ''}
-          aria-pressed={activePanel === tab.key}
-          onClick={() => session.setPanel(tab.key)}
-        >
-          <Icon name={tab.icon} />
-          <span>{tab.label}</span>
-        </button>
-      ))}
+    <>
+      <nav className="hud-tabs" aria-label={t.title}>
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            className={`hud-tab ${activePanel === tab.key ? 'active' : ''}`}
+            aria-pressed={activePanel === tab.key}
+            data-testid={`sitio-hud-tab-${tab.key}`}
+            onClick={() => session.setPanel(tab.key)}
+          >
+            <Icon name={tab.icon} />
+            <span>{tab.label}</span>
+          </button>
+        ))}
+      </nav>
       <button
         type="button"
-        className="book-end"
+        className="hud-end-month"
+        data-testid="sitio-end-month"
         disabled={state.status !== 'playing'}
+        title={t.endSeason}
         onClick={() => void session.endMonth()}
       >
-        {t.endSeason}
+        <AtlasSprite name="hud_stamp" size={42} label={t.endSeason} />
+        <span>{t.endSeason}</span>
+        <span className="hud-month-marks" aria-hidden="true">
+          {[1, 2, 3, 4].map((mark) => (
+            <i key={mark} className={mark <= state.monthOfSeason ? 'on' : ''} />
+          ))}
+        </span>
       </button>
-    </nav>
-  );
-}
-
-function Resource({
-  icon,
-  label,
-  value,
-}: {
-  icon: PixelIconName;
-  label: string;
-  value: number | string;
-}) {
-  return (
-    <div className="resource">
-      <span className="resource-label">{label}</span>
-      <span className="resource-value">
-        <PixelIcon name={icon} />
-        <strong>{value}</strong>
-      </span>
-    </div>
+    </>
   );
 }
 
@@ -736,6 +873,7 @@ type IconName =
   | 'fertilizer'
   | 'limestone'
   | 'road'
+  | 'demolish'
   | 'canteiro'
   | 'stock'
   | 'price'
@@ -746,9 +884,21 @@ type IconName =
   | 'house'
   | 'terreiro'
   | 'tulha'
+  | 'forno'
   | 'capela'
   | 'venda'
   | 'escola'
+  | 'worker'
+  | 'idle'
+  | 'rest'
+  | 'yard'
+  | 'coffee'
+  | 'study'
+  | 'roast'
+  | 'build'
+  | 'plantLot'
+  | 'clear'
+  | 'plant'
   | 'chevron';
 
 const ICON_PATHS: Record<Exclude<IconName, 'chevron'>, ReactNode> = {
@@ -795,6 +945,13 @@ const ICON_PATHS: Record<Exclude<IconName, 'chevron'>, ReactNode> = {
     <>
       <path d="M5 21 8 3M19 21l-3-18" />
       <path d="M12 5v3M12 12v3M12 19v2" />
+    </>
+  ),
+  demolish: (
+    <>
+      <path d="m14 3 7 7-4 4-7-7z" />
+      <path d="m12 5-9 9 4 4 9-9" />
+      <path d="m5 16-2 5 5-2" />
     </>
   ),
   canteiro: (
@@ -854,6 +1011,14 @@ const ICON_PATHS: Record<Exclude<IconName, 'chevron'>, ReactNode> = {
       <path d="M4 8l4-4h8l4 4M9 12h6v8H9z" />
     </>
   ),
+  forno: (
+    <>
+      <path d="M3 21h18v-8H3z" />
+      <path d="M7 13a5 5 0 0 1 10 0" />
+      <path d="M15 13V6h3v7" />
+      <path d="M9 21v-4h6v4" />
+    </>
+  ),
   capela: (
     <>
       <path d="M5 21V10l7-5 7 5v11H5Z" />
@@ -873,6 +1038,68 @@ const ICON_PATHS: Record<Exclude<IconName, 'chevron'>, ReactNode> = {
       <path d="M8 8h1M17 8h1M8 11h1M17 11h1" />
     </>
   ),
+  worker: (
+    <>
+      <circle cx="12" cy="7" r="3" />
+      <path d="M6 21c0-4 2.7-7 6-7s6 3 6 7" />
+    </>
+  ),
+  idle: (
+    <>
+      <circle cx="12" cy="12" r="7" />
+      <path d="M9 12h6" />
+    </>
+  ),
+  rest: <path d="M20 14a8 8 0 1 1-9-9 6 6 0 0 0 9 9Z" />,
+  yard: (
+    <>
+      <path d="M12 21V9" />
+      <path d="M12 13c-4 0-6-2-6-6 4 0 6 2 6 6Z" />
+      <path d="M12 10c4 0 6-2 6-6-4 0-6 2-6 6Z" />
+    </>
+  ),
+  coffee: (
+    <>
+      <path d="M7 9c0-3 2-5 5-5s5 2 5 5-2 9-5 9-5-6-5-9Z" />
+      <path d="M9 10c2 1 4 1 6 0" />
+    </>
+  ),
+  study: (
+    <>
+      <path d="M5 5h6v14H5zM13 5h6v14h-6z" />
+      <path d="M11 5v14" />
+    </>
+  ),
+  roast: (
+    <path d="M12 21c4 0 7-3 7-7 0-3-2-5-4-7 1 3-1 5-3 5 1-2 0-5-2-7 0 4-5 6-5 11 0 3 3 5 7 5Z" />
+  ),
+  build: (
+    <>
+      <path d="M4 20 15 9" />
+      <path d="m13 4 7 7-3 3-7-7z" />
+    </>
+  ),
+  plantLot: (
+    <>
+      <path d="M12 21v-7" />
+      <path d="M8 21h8" />
+      <path d="M12 14c-4 0-6-2-6-6 4 0 6 2 6 6Z" />
+      <path d="M12 11c4 0 6-2 6-6-4 0-6 2-6 6Z" />
+    </>
+  ),
+  clear: (
+    <>
+      <path d="M4 20 16 8" />
+      <path d="m14 4 6 6-3 3-6-6z" />
+    </>
+  ),
+  plant: (
+    <>
+      <path d="M12 21v-7" />
+      <path d="M8 21h8" />
+      <path d="M12 14c-4 0-6-2-6-6 4 0 6 2 6 6Z" />
+    </>
+  ),
 };
 
 function Icon({ name }: { name: IconName }) {
@@ -883,102 +1110,6 @@ function Icon({ name }: { name: IconName }) {
       ) : (
         ICON_PATHS[name]
       )}
-    </svg>
-  );
-}
-
-type PixelIconName =
-  | 'families'
-  | 'coins'
-  | 'food'
-  | 'wood'
-  | 'fertilizer'
-  | 'limestone'
-  | 'stock'
-  | 'price'
-  | 'reputation';
-
-const PIXEL_ICONS: Record<PixelIconName, ReactNode> = {
-  families: (
-    <>
-      <rect x="3" y="2" width="4" height="4" />
-      <rect x="9" y="2" width="4" height="4" />
-      <rect x="2" y="7" width="6" height="2" />
-      <rect x="8" y="7" width="6" height="2" />
-      <rect x="2" y="9" width="2" height="5" />
-      <rect x="6" y="9" width="2" height="5" />
-      <rect x="8" y="9" width="2" height="5" />
-      <rect x="12" y="9" width="2" height="5" />
-    </>
-  ),
-  coins: (
-    <>
-      <path d="M6 1h4v1h2v1h1v1h1v2h1v4h-1v2h-1v1h-1v1h-2v1H6v-1H4v-1H3v-1H2v-2H1V6h1V4h1V3h1V2h2Z" opacity=".28" />
-      <path d="M7 2h2v1h1v1h1v1h1v2h1v2h-1v2h-1v1h-1v1h-1v1H7v-1H5v-1H4v-1H3v-2H2V7h1V5h1V4h1V3h2Z" />
-      <rect x="7" y="7" width="2" height="2" />
-      <rect x="5" y="9" width="6" height="2" />
-    </>
-  ),
-  food: (
-    <>
-      <rect x="7" y="2" width="2" height="13" />
-      <rect x="4" y="4" width="3" height="2" />
-      <rect x="9" y="6" width="3" height="2" />
-      <rect x="5" y="8" width="3" height="2" />
-      <rect x="9" y="10" width="3" height="2" />
-      <rect x="5" y="14" width="6" height="2" />
-    </>
-  ),
-  wood: (
-    <>
-      <path d="M2 8h12l2 4-2 4H2Z" opacity=".35" />
-      <path d="M3 9h10l1 3-1 3H3Z" />
-      <rect x="6" y="9" width="2" height="6" opacity=".35" />
-      <rect x="10" y="9" width="2" height="6" opacity=".35" />
-      <rect x="13" y="10" width="2" height="4" />
-    </>
-  ),
-  fertilizer: (
-    <>
-      <path d="M5 5h8l1 3v7H4V8Z" />
-      <rect x="7" y="2" width="4" height="3" />
-      <rect x="7" y="9" width="4" height="2" opacity=".35" />
-      <rect x="8" y="12" width="2" height="2" opacity=".35" />
-    </>
-  ),
-  limestone: (
-    <>
-      <path d="m3 8 4-5h6l4 5-3 6H6Z" />
-      <path d="M7 3 9 8l-3 6M13 3l-2 5 3 6" opacity=".35" />
-    </>
-  ),
-  stock: (
-    <>
-      <path d="M7 2h4l3 3v9l-3 2H7l-3-3V5Z" />
-      <path d="M7 5c3 1 5 4 5 7" opacity=".35" />
-      <rect x="7" y="6" width="2" height="3" opacity=".35" />
-    </>
-  ),
-  price: (
-    <>
-      <path d="M2 7V2h6l7 7-5 5-7-7Z" />
-      <rect x="4" y="4" width="2" height="2" opacity=".35" />
-    </>
-  ),
-  reputation: (
-    <path d="m8 1 2 4 4 1-3 3 1 5-4-2-4 2 1-5-3-3 4-1Z" />
-  ),
-};
-
-function PixelIcon({ name }: { name: PixelIconName }) {
-  return (
-    <svg
-      className="pixel-icon"
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-      shapeRendering="crispEdges"
-    >
-      {PIXEL_ICONS[name]}
     </svg>
   );
 }
@@ -1013,41 +1144,70 @@ function MarketPanel({
   t: Strings;
   salePrice: number;
 }) {
-  const priceFor = (grade: CoffeeGrade) =>
-    grade === 'bad' ? Math.max(1, salePrice - 1) : grade === 'good' ? salePrice + 1 : salePrice;
+  const dry = state.coffeeBatches.filter((batch) => batch.stage === 'dry');
+  const roasted = state.coffeeBatches.filter((batch) => batch.stage === 'roasted');
+  const reserved = (batchId: number) =>
+    state.marketCart.coffee
+      .filter((sale) => sale.batchId === batchId)
+      .reduce((sum, sale) => sum + sale.amount, 0);
+  const row = (batch: CoffeeBatch) => {
+    const already = reserved(batch.id);
+    const available = batch.amount - already;
+    return (
+      <li key={batch.id}>
+        <span className={`grade grade-${batch.grade}`}>{t.grade[batch.grade]}</span>
+        <span className="muted small">
+          {batch.amount} {t.sacks}
+        </span>
+        {batch.stage === 'dry' ? (
+          <span className="muted small">
+            {t.ageMonths}: {batch.ageMonths}
+          </span>
+        ) : null}
+        {already > 0 ? (
+          <span className="muted small">
+            +{already} {t.monthEnd}
+          </span>
+        ) : null}
+        <strong>
+          {coffeeBatchValue(batch, salePrice)} {t.coins.toLowerCase()}
+        </strong>
+        <button
+          type="button"
+          className="button small"
+          disabled={available < 1}
+          onClick={() => void session.sellCoffee(batch.id, available)}
+        >
+          {t.sellAll}
+        </button>
+      </li>
+    );
+  };
   return (
     <section>
       <h2>
         <Icon name="stock" />
-        {t.marketCoffee} <span className="count">{state.coffeeStock}/{state.coffeeCapacity}</span>
+        {t.marketCoffee} <span className="count">{state.coffeeStock}</span>
       </h2>
-      <ul className="grade-list">
-        {COFFEE_GRADES.map((grade) => (
-          <li key={grade}>
-            <span className={`grade grade-${grade}`}>{t.grade[grade]}</span>
-            <span className="muted small">{state.coffeeGrades[grade]} {t.sacks}</span>
-            {state.marketCart[grade] > 0 ? (
-              <span className="muted small">
-                +{state.marketCart[grade]} {t.monthEnd}
-              </span>
-            ) : null}
-            <strong>{priceFor(grade)} {t.coins.toLowerCase()}</strong>
-            <button
-              type="button"
-              className="button small"
-              disabled={state.coffeeGrades[grade] - state.marketCart[grade] < 1}
-              onClick={() =>
-                void session.sellCoffee(
-                  grade,
-                  state.coffeeGrades[grade] - state.marketCart[grade],
-                )
-              }
-            >
-              {t.sellAll}
-            </button>
-          </li>
-        ))}
-      </ul>
+      <p className="muted small">{t.readyToSell}</p>
+      {dry.length === 0 && roasted.length === 0 ? (
+        <p className="muted">{t.noCoffeeReady}</p>
+      ) : (
+        <>
+          {dry.length > 0 ? (
+            <>
+              <h3>{t.dryCoffee}</h3>
+              <ul className="grade-list">{dry.map(row)}</ul>
+            </>
+          ) : null}
+          {roasted.length > 0 ? (
+            <>
+              <h3>{t.roastedCoffee}</h3>
+              <ul className="grade-list">{roasted.map(row)}</ul>
+            </>
+          ) : null}
+        </>
+      )}
     </section>
   );
 }
@@ -1218,8 +1378,6 @@ function MarketSummary({
   salePrice: number;
 }) {
   const cart = state.marketCart;
-  const priceFor = (grade: CoffeeGrade) =>
-    grade === 'bad' ? Math.max(1, salePrice - 1) : grade === 'good' ? salePrice + 1 : salePrice;
   const rows: { type: string; label: string; quantity: number; value: number }[] = [];
   if (cart.wood > 0) {
     rows.push({ type: t.buy, label: t.wood, quantity: cart.wood, value: -cart.wood * WOOD_BUY_PRICE });
@@ -1255,15 +1413,19 @@ function MarketSummary({
       quantity: cart.food,
       value: cart.food * FOOD_SELL_PRICE,
     });
-  }  for (const grade of COFFEE_GRADES) {
-    if (cart[grade] > 0) {
-      rows.push({
-        type: t.sell,
-        label: `${t.task.coffee} ${t.grade[grade]}`,
-        quantity: cart[grade],
-        value: cart[grade] * priceFor(grade),
-      });
-    }
+  }
+  for (const sale of cart.coffee) {
+    const batch = state.coffeeBatches.find((entry) => entry.id === sale.batchId);
+    if (!batch) continue;
+    const stage = batch.stage === 'roasted' ? t.roastedCoffee : t.dryCoffee;
+    const age =
+      batch.stage === 'dry' ? ` · ${batch.ageMonths} ${t.months}` : '';
+    rows.push({
+      type: t.sell,
+      label: `${stage} · ${t.grade[batch.grade]}${age}`,
+      quantity: sale.amount,
+      value: sale.amount * coffeeBatchValue(batch, salePrice),
+    });
   }
   const cost = rows.filter((row) => row.value < 0).reduce((sum, row) => sum - row.value, 0);
   const revenue = rows.filter((row) => row.value > 0).reduce((sum, row) => sum + row.value, 0);
@@ -1359,14 +1521,162 @@ function FamilyGrowth({
   );
 }
 
+interface TaskOption {
+  key: string;
+  label: string;
+  icon: IconName;
+  task: WorkTask;
+  disabled: boolean;
+  active: boolean;
+  badge?: string;
+  land?: 'clear';
+}
+
+function taskKey(task: WorkTask): string {
+  if (task.kind === 'build') return `build:${task.siteId}`;
+  if (task.kind === 'plantLot') return `plantLot:${task.orderId}`;
+  if (task.kind === 'clear') return `clear:${task.x},${task.y}`;
+  if (task.kind === 'plant') return `plant:${task.x},${task.y}`;
+  return task.kind;
+}
+
+function monthlyTaskOptions(
+  person: Person,
+  context: {
+    sites: { id: number; kind: BuildingKind; progress: number; required: number }[];
+    plantOrders: CoffeePlantOrder[];
+    hasSchool: boolean;
+    hasForno: boolean;
+    hasDryCoffee: boolean;
+    hasRoastWood: boolean;
+    roastBusy: boolean;
+    canFertilize: boolean;
+    canLime: boolean;
+    t: Strings;
+  },
+): { options: TaskOption[]; activeLabel: string | null } {
+  const {
+    sites,
+    plantOrders,
+    hasSchool,
+    hasForno,
+    hasDryCoffee,
+    hasRoastWood,
+    roastBusy,
+    canFertilize,
+    canLime,
+    t,
+  } = context;
+  const currentKey = taskKey(person.task);
+  const options: TaskOption[] = [];
+  const add = (
+    key: string,
+    label: string,
+    icon: IconName,
+    task: WorkTask,
+    disabled = false,
+    badge?: string,
+    land?: 'clear',
+  ) => {
+    options.push({
+      key,
+      label,
+      icon,
+      task,
+      disabled,
+      active: currentKey === key,
+      badge,
+      land,
+    });
+  };
+
+  add('idle', t.task.idle, 'idle', { kind: 'idle' });
+  if (person.age >= 16) {
+    add('rest', `${t.task.rest} (+1)`, 'rest', { kind: 'rest' });
+    add('yard', t.task.quintal, 'yard', { kind: 'yard' });
+    add('coffee', t.task.coffee, 'coffee', { kind: 'coffee' });
+    add(
+      'fertilize',
+      t.task.fertilize,
+      'fertilizer',
+      { kind: 'fertilize' },
+      !canFertilize,
+    );
+    add(
+      'limestone',
+      t.task.limestone,
+      'limestone',
+      { kind: 'limestone' },
+      !canLime,
+    );
+    add('road', t.task.road, 'road', { kind: 'road' });
+    add(
+      'roast',
+      t.task.roast,
+      'roast',
+      { kind: 'roast' },
+      !hasForno || !hasDryCoffee || !hasRoastWood || (roastBusy && currentKey !== 'roast'),
+    );
+    const clearTask = person.task.kind === 'clear' ? person.task : null;
+    add(
+      'clear',
+      clearTask
+        ? `${t.task.clear} (${clearTask.x},${clearTask.y})`
+        : t.task.clear,
+      'clear',
+      clearTask ?? { kind: 'clear', x: 0, y: 0 },
+      false,
+      undefined,
+      'clear',
+    );
+    const clearOption = options.find((option) => option.key === 'clear');
+    if (clearOption) clearOption.active = person.task.kind === 'clear';
+    for (const order of plantOrders) {
+      add(
+        `plantLot:${order.id}`,
+        `${t.task.plantLot} (${order.progress}/${order.required})`,
+        'plantLot',
+        { kind: 'plantLot', orderId: order.id },
+        false,
+        `${order.progress}/${order.required}`,
+      );
+    }
+    for (const site of sites) {
+      add(
+        `build:${site.id}`,
+        `${t.task.build} ${t.tools[site.kind]} (${site.progress}/${site.required})`,
+        'build',
+        { kind: 'build', siteId: site.id },
+        false,
+        `${site.progress}/${site.required}`,
+      );
+    }
+  } else {
+    add('yard', t.task.quintal, 'yard', { kind: 'yard' });
+    add('study', t.task.study, 'study', { kind: 'study' }, !hasSchool || person.education);
+  }
+
+  if (person.task.kind === 'plant') {
+    const task = person.task;
+    add(taskKey(task), `${t.task.plant} (${task.x},${task.y})`, 'plant', task);
+  }
+
+  const active = options.find((option) => option.active);
+  return { options, activeLabel: active?.label ?? null };
+}
+
 function FamilyCard({
   family,
   people,
   sites,
   plantOrders,
   hasSchool,
-  fertilizer,
-  limestone,
+  hasForno,
+  hasDryCoffee,
+  hasRoastWood,
+  roastBusy,
+  canFertilize,
+  canLime,
   t,
   onAssign,
   onLand,
@@ -1377,14 +1687,15 @@ function FamilyCard({
   sites: { id: number; kind: BuildingKind; progress: number; required: number }[];
   plantOrders: CoffeePlantOrder[];
   hasSchool: boolean;
-  fertilizer: number;
-  limestone: number;
+  hasForno: boolean;
+  hasDryCoffee: boolean;
+  hasRoastWood: boolean;
+  roastBusy: boolean;
+  canFertilize: boolean;
+  canLime: boolean;
   t: Strings;
   onAssign: (personId: number, task: WorkTask) => void;
-  onLand: (
-    personId: number,
-    kind: 'plant' | 'clear' | 'fertilize' | 'limestone',
-  ) => void;
+  onLand: (personId: number, kind: 'plant' | 'clear') => void;
   onCancelLand: () => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -1414,7 +1725,23 @@ function FamilyCard({
         </p>
       ) : (
         <ul className="people">
-          {people.map((person) => (
+          {people.map((person) => {
+            const { options: taskOptions, activeLabel: activeTaskLabel } = monthlyTaskOptions(
+              person,
+              {
+                sites,
+                plantOrders,
+                hasSchool,
+                hasForno,
+                hasDryCoffee,
+                hasRoastWood,
+                roastBusy,
+                canFertilize,
+                canLime,
+                t,
+              },
+            );
+            return (
             <li key={person.id} className="person">
               <div className="person-name">
                 <strong>{person.name}</strong>
@@ -1423,73 +1750,36 @@ function FamilyCard({
                   {person.education ? ` · ${t.educated}` : ''}
                 </span>
               </div>
-              <div className="routine">
-                <label>
-                  <span>{t.monthlyTask}</span>
-                  <select
-                    value={taskValue(person.task)}
-                    onChange={(event) => {
-                      onCancelLand();
-                      onAssign(person.id, taskFromValue(event.target.value));
-                    }}
-                  >
-                    {targetedTaskLabel(person.task, t) ? (
-                      <option value={person.task.kind} disabled>
-                        {targetedTaskLabel(person.task, t)}
-                      </option>
-                    ) : null}
-                    <option value="idle">{t.task.idle}</option>
-                    {person.age >= 16 ? <option value="rest">{t.task.rest} (+1)</option> : null}
-                    <option value="yard">{t.task.quintal}</option>
-                    {person.age >= 16 ? (
-                      <>
-                        <option value="coffee">{t.task.coffee}</option>
-                        <option value="road">{t.task.road}</option>
-                        {plantOrders.map((order) => (
-                          <option key={order.id} value={`plantLot:${order.id}`}>
-                            {t.task.plantLot} ({order.progress}/{order.required})
-                          </option>
-                        ))}
-                        {sites.map((site) => (
-                          <option key={site.id} value={`build:${site.id}`}>
-                            {t.task.build} {t.tools[site.kind]} ({site.progress}/{site.required})
-                          </option>
-                        ))}
-                      </>
-                    ) : (
-                      <option value="study" disabled={!hasSchool || person.education}>
-                        {t.task.study}
-                      </option>
-                    )}
-                  </select>
-                  {person.age >= 16 ? (
-                    <span className="land-actions">
-                      <button
-                        type="button"
-                        className="mini"
-                        onClick={() => onLand(person.id, 'clear')}
-                      >
-                        {t.task.clear}
-                      </button>
-                      <button
-                        type="button"
-                        className="mini"
-                        disabled={fertilizer < 1}
-                        onClick={() => onLand(person.id, 'fertilize')}
-                      >
-                        {t.task.fertilize}
-                      </button>
-                      <button
-                        type="button"
-                        className="mini"
-                        disabled={limestone < 1}
-                        onClick={() => onLand(person.id, 'limestone')}
-                      >
-                        {t.task.limestone}
-                      </button>
-                    </span>
-                  ) : null}
-                </label>
+              <div className="task-picker">
+                <span className="task-picker-label">{t.monthlyTask}</span>
+                <div className="task-icons" role="group" aria-label={t.monthlyTask}>
+                  {taskOptions.map((option) => (
+                    <button
+                      key={option.key}
+                      type="button"
+                      className={`task-icon ${option.active ? 'active' : ''}`}
+                      data-testid={`sitio-task-${option.key}`}
+                      disabled={option.disabled}
+                      aria-pressed={option.active}
+                      title={option.label}
+                      aria-label={option.label}
+                      onClick={() => {
+                        onCancelLand();
+                        if (option.land) {
+                          onLand(person.id, option.land);
+                        } else {
+                          onAssign(person.id, option.task);
+                        }
+                      }}
+                    >
+                      <Icon name={option.icon} />
+                      {option.badge ? <small>{option.badge}</small> : null}
+                    </button>
+                  ))}
+                </div>
+                {activeTaskLabel ? (
+                  <span className="task-current">{activeTaskLabel}</span>
+                ) : null}
               </div>
               {person.age < 16 ? (
                 <span className="muted small">
@@ -1499,36 +1789,13 @@ function FamilyCard({
                 </span>
               ) : null}
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </article>
   );
 }
-function targetedTaskLabel(task: WorkTask, t: Strings): string | null {
-  if (task.kind === 'fertilize') return `${t.task.fertilize} (${task.x},${task.y})`;
-  if (task.kind === 'limestone') return `${t.task.limestone} (${task.x},${task.y})`;
-  if (task.kind === 'clear') return `${t.task.clear} (${task.x},${task.y})`;
-  if (task.kind === 'plant') return `${t.task.plant} (${task.x},${task.y})`;
-  return null;
-}
-
-function taskValue(task: WorkTask): string {
-  if (task.kind === 'build') return `build:${task.siteId}`;
-  if (task.kind === 'plantLot') return `plantLot:${task.orderId}`;
-  return task.kind;
-}
-
-function taskFromValue(value: string): WorkTask {
-  if (value.startsWith('build:')) {
-    return { kind: 'build', siteId: Number(value.slice(6)) };
-  }
-  if (value.startsWith('plantLot:')) {
-    return { kind: 'plantLot', orderId: Number(value.slice(9)) };
-  }
-  return { kind: value as 'idle' | 'rest' | 'yard' | 'coffee' | 'study' | 'road' };
-}
-
 const SETUP_STEPS: SetupStep[] = ['sede', 'house', 'terreiro', 'coffee'];
 
 function SetupPanel({
@@ -1549,7 +1816,15 @@ function SetupPanel({
   return (
     <section className={`setup-panel ${pinned ? 'pinned' : ''}`}>
       <h2>{t.setup.title}</h2>
-      <p className="muted small">{t.setup.hint}</p>
+      <div className="tutorial-guide" data-testid="sitio-tutorial" data-step={step}>
+        <div className="guide-portrait-box">
+          <GuidePortrait label={t.setup.guideName} />
+        </div>
+        <div className="speech-bubble" role="note" aria-live="polite">
+          <strong>{t.setup.guideName}</strong>
+          <p>{t.setup.guide[step]}</p>
+        </div>
+      </div>
       <ol className="setup-steps">
         {SETUP_STEPS.map((entry, index) => (
           <li
@@ -1589,6 +1864,46 @@ function SetupPanel({
   );
 }
 
+function DemolishModal({
+  session,
+  pending,
+  t,
+}: {
+  session: SitioSession;
+  pending: PendingDemolish;
+  t: Strings;
+}) {
+  return (
+    <div className="modal-backdrop">
+      <div className="modal" data-testid="sitio-demolish-modal">
+        <h2>{t.demolishTitle}</h2>
+        <p className="muted">{t.demolishBody}</p>
+        <dl className="report-grid">
+          <Row label={t.tools[pending.kind]} value={`+${pending.wood} ${t.wood.toLowerCase()}`} />
+        </dl>
+        <div className="modal-actions">
+          <button
+            type="button"
+            className="button primary"
+            data-testid="sitio-demolish-confirm"
+            onClick={() => void session.confirmDemolish()}
+          >
+            {t.demolishConfirm}
+          </button>
+          <button
+            type="button"
+            className="button"
+            data-testid="sitio-demolish-cancel"
+            onClick={() => session.cancelDemolish()}
+          >
+            {t.cancel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ReportModal({
   session,
   state,
@@ -1623,8 +1938,21 @@ function ReportModal({
           ) : null}
           {report.lost > 0 ? <Row label={t.report.lost} value={report.lost} /> : null}
           {report.sold > 0 ? <Row label={t.report.sold} value={report.sold} /> : null}
-          {report.stock > 0 ? (
-            <Row label={t.report.stock} value={`${report.stock}/${state.coffeeCapacity}`} />
+          {report.stock > 0 ? <Row label={t.report.stock} value={report.stock} /> : null}
+          {report.dried > 0 ? <Row label={t.report.dried} value={report.dried} /> : null}
+          {report.spoiled > 0 ? <Row label={t.report.spoiled} value={report.spoiled} /> : null}
+          {report.roasted > 0 ? <Row label={t.report.roasted} value={report.roasted} /> : null}
+          {report.roastWood > 0 ? (
+            <Row label={t.report.roastWood} value={report.roastWood} />
+          ) : null}
+          {report.dryingStock > 0 ? (
+            <Row label={t.report.drying} value={report.dryingStock} />
+          ) : null}
+          {report.dryStock > 0 ? (
+            <Row label={t.report.dryStock} value={report.dryStock} />
+          ) : null}
+          {report.roastedStock > 0 ? (
+            <Row label={t.report.roastedStock} value={report.roastedStock} />
           ) : null}
           {report.revenue > 0 ? <Row label={t.report.revenue} value={report.revenue} /> : null}
           {report.price > 0 ? <Row label={t.report.price} value={report.price} /> : null}

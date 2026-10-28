@@ -52,6 +52,7 @@
    { "name": "capela", "keys": [{ "frame": 0, "bounds": {"x": 320, "y": 368, "w": 80, "h": 112 } }] },
    { "name": "venda", "keys": [{ "frame": 0, "bounds": {"x": 128, "y": 368, "w": 96, "h": 64 } }] },
    { "name": "escola", "keys": [{ "frame": 0, "bounds": {"x": 224, "y": 368, "w": 96, "h": 88 } }] },
+   { "name": "forno", "keys": [{ "frame": 0, "bounds": {"x": 256, "y": 480, "w": 128, "h": 104 } }] },
    { "name": "family", "keys": [{ "frame": 0, "bounds": {"x": 464, "y": 160, "w": 16, "h": 24 } }] },
    { "name": "person_man_0_0", "keys": [{ "frame": 0, "bounds": {"x": 0, "y": 480, "w": 16, "h": 24 } }] },
    { "name": "person_man_0_1", "keys": [{ "frame": 0, "bounds": {"x": 16, "y": 480, "w": 16, "h": 24 } }] },
@@ -103,7 +104,17 @@
    { "name": "person_girl_5_1", "keys": [{ "frame": 0, "bounds": {"x": 176, "y": 552, "w": 16, "h": 24 } }] },
    { "name": "icon_fertilizer", "keys": [{ "frame": 0, "bounds": {"x": 0, "y": 600, "w": 16, "h": 16 } }] },
    { "name": "icon_limestone", "keys": [{ "frame": 0, "bounds": {"x": 24, "y": 600, "w": 16, "h": 16 } }] },
-   { "name": "icon_clock", "keys": [{ "frame": 0, "bounds": {"x": 48, "y": 600, "w": 16, "h": 16 } }] }
+   { "name": "icon_clock", "keys": [{ "frame": 0, "bounds": {"x": 48, "y": 600, "w": 16, "h": 16 } }] },
+   { "name": "hud_season_spring", "keys": [{ "frame": 0, "bounds": {"x": 392, "y": 480, "w": 24, "h": 24 } }] },
+   { "name": "hud_season_summer", "keys": [{ "frame": 0, "bounds": {"x": 392, "y": 508, "w": 24, "h": 24 } }] },
+   { "name": "hud_season_autumn", "keys": [{ "frame": 0, "bounds": {"x": 392, "y": 536, "w": 24, "h": 24 } }] },
+   { "name": "hud_season_winter", "keys": [{ "frame": 0, "bounds": {"x": 392, "y": 564, "w": 24, "h": 24 } }] },
+   { "name": "hud_coffee", "keys": [{ "frame": 0, "bounds": {"x": 424, "y": 480, "w": 24, "h": 24 } }] },
+   { "name": "hud_supplies", "keys": [{ "frame": 0, "bounds": {"x": 424, "y": 508, "w": 24, "h": 24 } }] },
+   { "name": "hud_reputation", "keys": [{ "frame": 0, "bounds": {"x": 424, "y": 536, "w": 24, "h": 24 } }] },
+   { "name": "hud_book", "keys": [{ "frame": 0, "bounds": {"x": 424, "y": 564, "w": 24, "h": 24 } }] },
+   { "name": "hud_stamp", "keys": [{ "frame": 0, "bounds": {"x": 456, "y": 480, "w": 48, "h": 48 } }] },
+   { "name": "hud_seal", "keys": [{ "frame": 0, "bounds": {"x": 456, "y": 536, "w": 24, "h": 24 } }] }
   ]
  }
 }
