@@ -5,6 +5,9 @@ test('opens the menu and starts a new farm', async ({ page }) => {
   const menu = page.getByTestId('sitio-menu');
   await expect(menu).toBeVisible();
   await expect(page).toHaveTitle('Sítio');
+  const source = page.getByTestId('sitio-source');
+  await expect(source).toBeVisible();
+  await expect(source).toHaveAttribute('href', 'https://github.com/gamestudio42/sitio');
 
   await page.getByTestId('sitio-new').click();
   await expect(menu).toBeHidden();

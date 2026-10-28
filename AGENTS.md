@@ -24,6 +24,11 @@ harvest, the families and the year.
    body) are in English. Player-facing text lives in `apps/web/src/i18n.ts`
    (`en`, `pt-BR`, `es`, `fr`, `de`). English is the type source. The first visit
    follows the browser language (or English).
+7. Licensing follows [`LICENSING.md`](LICENSING.md): game code (`apps/web`,
+   `packages/simulation`, `tests`) is AGPL-3.0-or-later; `packages/kernel`,
+   `bridge`, `view-iso`, `chrome` and `tools` are Apache-2.0; art, screenshots
+   and docs are CC-BY-4.0. Do not move code or assets between those areas
+   without updating the license map.
 
 ## Commands
 

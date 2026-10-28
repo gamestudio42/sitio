@@ -32,6 +32,15 @@ Docker: `docker compose up`.
 A fuller map of the repo is in [AGENTS.md](AGENTS.md). The simulation rules are
 described in [docs/architecture.md](docs/architecture.md).
 
+## Licensing
+
+Sítio uses a mixed license. Game code (`apps/web`, `packages/simulation`,
+`tests`) is AGPL-3.0-or-later; the reusable packages (`kernel`, `bridge`,
+`view-iso`, `chrome`) and `tools` are Apache-2.0; art, screenshots and docs are
+CC-BY-4.0. By opening a pull request you agree to license your contribution
+under the license that applies to the files you change. Third-party assets keep
+their own licenses. See [LICENSING.md](LICENSING.md).
+
 ## Pull requests
 
 - Keep the change small and covered by a test at the right layer (unit for a

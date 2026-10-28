@@ -135,3 +135,8 @@ service annex. The public-domain photograph used as a visual reference was
 *Casa grande da Fazenda Santa Maria do Monjolinho* (São Carlos, SP).
 
 All art in this repository is original.
+
+## License
+
+Art and art notes are © 2026 Game Studio 42 and licensed under
+[CC-BY-4.0](../../LICENSE-ASSETS).

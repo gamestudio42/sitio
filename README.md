@@ -12,6 +12,7 @@
   <a href="https://github.com/gamestudio42/sitio/stargazers"><img src="https://img.shields.io/github/stars/gamestudio42/sitio?style=for-the-badge&labelColor=241c16&color=d08a4a" alt="GitHub stars"></a>
   <a href="https://github.com/gamestudio42/sitio/fork"><img src="https://img.shields.io/github/forks/gamestudio42/sitio?style=for-the-badge&labelColor=241c16&color=b8563a" alt="GitHub forks"></a>
   <a href="https://github.com/gamestudio42"><img src="https://img.shields.io/badge/Game_Studio_42-241c16?style=for-the-badge&labelColor=241c16&color=8fbf6a" alt="Game Studio 42"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0--or--later-d08a4a?style=for-the-badge&labelColor=241c16" alt="License: AGPL-3.0-or-later"></a>
 </p>
 
 <p align="center">
@@ -103,7 +104,7 @@ The simulation is deterministic and runs in a Web Worker. React sends commands a
 
 ## Fork & remix
 
-Sítio is MIT-licensed. Fork it, change the rules, ship your own farm on GitHub Pages.
+Sítio is AGPL-3.0-or-later for the game code and Apache-2.0 for the reusable libraries. Fork it, change the rules, ship your own farm on GitHub Pages.
 
 ```sh
 git clone https://github.com/gamestudio42/sitio.git
@@ -122,4 +123,28 @@ Ideas and patches: [good first issues](https://github.com/gamestudio42/sitio/lab
 
 ## Licence
 
-Sítio is MIT-licensed. Its code, original pixel art, sound and music are original. Micropolis (GPLv3) and OpenSC2K were studied as behavioural references only; no code or assets were copied. See [LICENSE](LICENSE) and [AGENTS.md](AGENTS.md) for project rules.
+Sítio uses a mixed license:
+
+| Path                                                                                                                                                  | License             |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| `apps/web/`, `packages/simulation/`, `tests/`, root build and config files                                                                            | `AGPL-3.0-or-later` |
+| `packages/kernel/`, `packages/bridge/`, `packages/view-iso/`, `packages/chrome/`                                                                      | `Apache-2.0`        |
+| `tools/`                                                                                                                                              | `Apache-2.0`        |
+| `README.md`, `AGENTS.md`, `CONTRIBUTING.md`, `THIRD-PARTY.md`, `LICENSING.md`, `art/`, `apps/web/public/art/`, `apps/web/public/favicon.svg`, `docs/` | `CC-BY-4.0`         |
+| `apps/web/public/fonts/`                                                                                                                              | `OFL-1.1`           |
+
+Root build and config files include `package.json`, `pnpm-lock.yaml`,
+`pnpm-workspace.yaml`, `tsconfig*.json`, `eslint.config.js`, `vitest.config.ts`,
+`playwright.config.ts`, `docker-compose.yml` and `.github/`.
+
+The game code is free software under the GNU Affero General Public License,
+version 3 or later. The corresponding source is
+[github.com/gamestudio42/sitio](https://github.com/gamestudio42/sitio). Art,
+screenshots and documentation are © 2026 Game Studio 42 and licensed under
+CC-BY-4.0. The bundled Pixelify Sans font remains under the SIL Open Font
+License 1.1.
+
+Code, pixel art and synthesized sound are original. Micropolis (GPLv3) and
+OpenSC2K were studied as behavioural references only; no code or assets were
+copied. See [LICENSING.md](LICENSING.md), [THIRD-PARTY.md](THIRD-PARTY.md) and
+[AGENTS.md](AGENTS.md).

@@ -189,7 +189,17 @@ function Menu({ session }: { session: SitioSession }) {
             </ul>
           )}
         </section>
-        <p className="credits">{t.credits}</p>
+        <p className="credits">
+          {t.credits} ·{' '}
+          <a
+            data-testid="sitio-source"
+            href="https://github.com/gamestudio42/sitio"
+            target="_blank"
+            rel="noreferrer"
+          >
+            {t.source}
+          </a>
+        </p>
       </div>
     </div>
   );
