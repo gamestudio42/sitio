@@ -1,6 +1,7 @@
 import {
   BUILDING_CAPELA,
   BUILDING_ESCOLA,
+  BUILDING_FORNO,
   BUILDING_HOUSE,
   BUILDING_IDS,
   BUILDING_SEDE,
@@ -144,6 +145,11 @@ function drawTool(g: Graphics, task: WorkTask): void {
       g.rect(-3, -9, 6, 7).fill(0xb89a6a);
       g.rect(-2, -10, 4, 2).fill(0x6a4a32);
       break;
+    case 'roast':
+      g.rect(-1, -11, 2, 11).fill(0x6b3d2a);
+      g.rect(-4, -13, 8, 4).fill(0x8a5a3b);
+      g.rect(-2, -16, 4, 3).fill(0xe0a84a);
+      break;
     case 'study':
       g.rect(-4, -8, 8, 6).fill(0xf0e2c4);
       g.rect(-4, -8, 1, 6).fill(0x8a5a3b);
@@ -229,6 +235,8 @@ function buildingColor(id: number): number {
       return 0xd9b36a;
     case BUILDING_ESCOLA:
       return 0xd7c6a2;
+    case BUILDING_FORNO:
+      return 0xa8663e;
     default:
       return 0xb0a090;
   }
@@ -250,6 +258,8 @@ function buildingSprite(id: number): string | null {
       return 'venda';
     case BUILDING_ESCOLA:
       return 'escola';
+    case BUILDING_FORNO:
+      return 'forno';
     default:
       return null;
   }
@@ -278,6 +288,7 @@ const BUILDING_ART: Record<number, BuildingArt> = {
   [BUILDING_VENDA]: { scale: 2, anchorX: 48 / 96, anchorY: 40 / 64, yOffset: 0 },
   [BUILDING_CAPELA]: { scale: 2, anchorX: 40 / 80, anchorY: 64 / 112, yOffset: 0 },
   [BUILDING_ESCOLA]: { scale: 2, anchorX: 48 / 96, anchorY: 56 / 88, yOffset: 0 },
+  [BUILDING_FORNO]: { scale: 2, anchorX: 64 / 128, anchorY: 56 / 104, yOffset: 0 },
 };
 
 function buildingArt(id: number): BuildingArt {
@@ -807,6 +818,18 @@ export class SitioRenderer {
       g.rect(7, -12, 5, 5).fill(0x6b4a2e);
       return;
     }
+    if (id === BUILDING_FORNO) {
+      g.rect(-16, -6, 32, 6).fill(0x6a4a32);
+      g.rect(-14, -14, 28, 9).fill(wall);
+      g.ellipse(0, -14, 14, 10).fill(0xb8563a);
+      g.ellipse(0, -14, 8, 5).fill(0x4a2c1e);
+      g.rect(9, -30, 5, 18).fill(0x8a5a3b);
+      g.rect(8, -32, 7, 3).fill(0x6b3d2a);
+      g.rect(-4, -9, 8, 9).fill(0x4a2c1e);
+      g.rect(-12, -3, 5, 3).fill(0x9a6b43);
+      g.rect(7, -3, 5, 3).fill(0x9a6b43);
+      return;
+    }
     g.rect(-13, -14, 26, 14).fill(wall);
     g.poly([-16, -14, 0, -24, 16, -14]).fill(0x8c4a34);
   }
@@ -1105,23 +1128,37 @@ export class SitioRenderer {
       const lot = state.coffeeLots.find((entry) => entry.id === marker.lotId);
       if (!lot) continue;
       const top = vertexToScreen(lot.x + lot.w / 2, lot.y, 0);
-      const names = [
-        marker.fertilizer ? 'icon_fertilizer' : null,
-        marker.limestone ? 'icon_limestone' : null,
-      ].filter((name): name is string => Boolean(name));
-      names.forEach((name, index) => {
-        const texture = this.atlas?.get(name);
+      const entries = [
+        { name: 'icon_fertilizer', state: marker.fertilizer },
+        { name: 'icon_limestone', state: marker.limestone },
+      ].filter(
+        (entry): entry is { name: string; state: 'applied' | 'queued' } =>
+          entry.state !== null,
+      );
+      entries.forEach((entry, index) => {
+        const texture = this.atlas?.get(entry.name);
         if (!texture) return;
         const holder = new Container();
-        const x = top.x + (names.length === 1 ? 0 : index === 0 ? -9 : 9);
+        const x = top.x + (entries.length === 1 ? 0 : index === 0 ? -9 : 9);
         const y = top.y - 15;
         holder.position.set(x, y);
         holder.zIndex = 1000 + index;
         const sprite = new Sprite(texture);
         sprite.anchor.set(0.5, 1);
         holder.addChild(sprite);
+        if (entry.state === 'applied') {
+          const check = new Graphics();
+          check
+            .moveTo(3, -13)
+            .lineTo(5, -11)
+            .lineTo(9, -16)
+            .stroke({ width: 1, color: 0x8fbf6a });
+          holder.addChild(check);
+        } else {
+          holder.alpha = 0.55;
+          this.animated.push(new FloatView(holder, y, (lot.id + index) * 0.21, 1.4));
+        }
         this.statusLayer.addChild(holder);
-        this.animated.push(new FloatView(holder, y, (lot.id + index) * 0.21, 1.4));
       });
     }
   }

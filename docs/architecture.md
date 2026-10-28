@@ -27,7 +27,7 @@ Vite, Vitest and `tsx` compile them on the fly, so there is no package build ste
 
 `pnpm dev` runs the app on port 5178. `pnpm preview` serves the production build.
 
-IndexedDB and the save envelope use the title name: `sitio-save` v24
+IndexedDB and the save envelope use the title name: `sitio-save` v25
 (`.sitio.json`).
 
 ## Simulation
@@ -59,11 +59,19 @@ update stock, wood, money, morale and population, process arrivals, report and
 advance. The season controls frost and
 drought, not a second simulation. A coffee monthly task covers eight cells (16
 pés), the full 4×2 lot. Educated adults count as double units for coffee and
-construction and add one extra food per task. Coffee is
-harvested in autumn and goes into stock; each terreiro holds 16 sacks, a tulha
-adds 6, and harvest above the room is lost. Stock is sold manually at the
-current price (a venda adds 1); the monthly report records sacks sold, sale
-revenue and closing stock. Yard work yields food per task; families eat two
+construction and add one extra food per task. Coffee is harvested in autumn as
+one batch per harvested cafezal, plus one stray batch per grade for coffee
+outside lots. A batch starts wet (`drying`) on the terreiro; each terreiro holds
+four batches, and a harvest that finds every slot full is lost. Drying takes one
+month. Dry coffee moves automatically into a tulha while it fits (256 sacks);
+coffee in the tulha never ages. Dry coffee still on the terreiro ages one month
+per month at 100%, 66% and 33% of its value and is discarded after the third
+month. Coffee can be sold per batch only when dry or roasted; a venda adds 1 to
+the base price. A roast is one adult monthly task that uses one wood and turns
+the oldest dry batch into roasted coffee, worth 2 extra coins per sack and never
+aging. The monthly report records sacks sold, sale revenue, dried, spoiled and
+roasted coffee, roast wood, and the drying, dry and roasted stock. Yard work
+yields food per task; families eat two
 units per month. Food is stored in one house pantry capped at eight per family;
 the player sells it manually at the market, and excess above the cap is wasted.
 Hunger reduces morale. Frost damages mature
@@ -75,38 +83,48 @@ roads also advance one tile per adult per month. The site keeps its progress and
 is drawn as a generic canteiro in three stages. A new farm starts
 with 4 wood; clearing one forest tile yields 2 wood, and wood can also be bought
 at the market for 1 coin each. Houses
-and terreiros can be repeated; a tulha, a venda, an escola and a capela are
-unique. The chain is tulha after terreiro, venda after tulha, escola after venda
-and capela after escola.
+and terreiros can be repeated; a tulha, a forno, a venda, an escola and a capela
+are unique. The forno is a 2x2 work that costs 5 coins and 2 wood, takes two
+months and requires a tulha. The chain is tulha after terreiro, forno after
+tulha, venda after tulha, escola after venda and capela after escola. Building
+footprints cannot overlap another building, a construction site, coffee, a
+planned road or a planting order. A completed building can be demolished for
+half of its wood cost; the seat, occupied houses and buildings holding coffee
+or families in use cannot be demolished.
 
 Coffee inputs are fertilizer and limestone. Each lot can receive one of each
 per crop: fertilizer adds 20 soil quality and one sack per harvested cell;
 limestone adds 20 quality. Quality is 40 at base and grades as bad below 50,
 medium from 50 to 69 and good at 70 or above. Bad sells for one less than base,
-medium at base and good for one more; a venda adds one more. Harvested stock is
-kept in the three grade piles and sold separately; the terreiro and tulha
-capacity applies to the total.
+medium at base and good for one more; a venda adds one more. Batches keep their
+own grade, amount, age and storage, so every sale preserves the exact batch
+price. Applied fertilizer and limestone come from the lot flags; queued tasks
+show as pending until the month ends, with the applied state taking priority.
 
 A new coffee lot is a 4×2 order that needs 16 seedlings, bought as four-seedling
 bundles for one coin. One adult monthly task completes the order before it becomes
 a muda lot. Monthly history records coins, income, expenses and
 harvest/stock by grade, and the Reports page draws the financial and production
-lines. The interface uses a bottom book navigation with Families, Works, Coffee,
-Market and Reports pages. Market purchases and coffee sales are queued and
+lines. The interface uses an almanac-style HUD: a wooden farm plaque, a
+parchment resource tally, wooden book tabs for Families, Works, Coffee, Market
+and Reports, and a wax stamp for ending the month. Market purchases and coffee sales are queued and
 applied together at the end of the month; the market page shows pending items,
 cost, revenue and net coins before confirmation. Queued purchases reserve their
 coins, so buildings and family invitations cannot spend them before the month
 ends.
 
 Each resident has one monthly task and one worker on the map. A worker task
-carries the output of the old two periods; targeted actions clear, fertilize or
-limestone one tile/lot per task. Residents whose monthly task is idle or rest are
+carries the output of the old two periods. Clearing is targeted at one forest
+tile per task; fertilizer and limestone are global tasks that advance the first
+eligible coffee lots in order, one lot per worker per month. Residents whose
+monthly task is idle or rest are
 removed from the map and leave only floating Zzz above the house. Each adult on
 vacation earns one coin for the house. When a construction or planting order
 finishes, its workers return home on vacation. Adults and children have a stored
 sex and outfit color chosen by the engine RNG; the map and family portrait use
-the same sprite variant. Queued fertilizer and limestone tasks put their sack
-icons above the lot, and each lot shows a clock badge with its first harvest
+the same sprite variant. Applied fertilizer and limestone put a full icon with a
+check above the lot; queued tasks use a faded floating icon. Applied wins when
+both would apply. Each lot also shows a clock badge with its first harvest
 forecast.
 
 The harvest forecast is a pure calculation from the current coffee crew: it
@@ -121,8 +139,10 @@ assigned to Road builds one queued tile per month. Roads cost no coins or wood a
 do not gate construction. The school currently educates without a teacher or
 staff; staffed institutions are the next stage. The game ends at month 48: the
 farm wins if it has six families, a chapel, a school, a shop and morale of at
-least 2; otherwise it ends. Saves use `sitio-save` v24 (`.sitio.json`); older
-saves are not migrated and must start a new farm.
+least 2; otherwise it ends. Development builds also expose a deterministic
+“Test farm” preset with every building, six families and coffee in every
+processing stage. Saves use `sitio-save` v25 (`.sitio.json`) and store
+the coffee batches; older saves are not migrated and must start a new farm.
 
 ## Determinism
 

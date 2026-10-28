@@ -781,6 +781,72 @@ edge(tulha, cc[1] + 7, cc[2] - 5, cc[1] + 14, cc[2] + 1, WOOD)
 edge(tulha, cc[1] + 13, cc[2] - 1, cc[1] + 15, cc[2] - 1, WOOD_DARK)
 wheel(cc[1] + 4, wy, 3)
 
+-- Forno: a 2x2 brick kiln with a chimney, wood pile and coffee sacks.
+-- The lot base centre is (64, 56).
+local function drawForno()
+local forno = layer("forno", 256, 480)
+local function FP(x, y, h)
+  return { 64 + (x - y) * 16, 40 + (x + y) * 8 - (h or 0) }
+end
+
+local flot = { FP(0, 0), FP(2, 0), FP(2, 2), FP(0, 2) }
+poly(forno, flot, C(0x7D5638))
+edge(forno, flot[1][1], flot[1][2], flot[2][1], flot[2][2], STONE_DARK)
+edge(forno, flot[2][1], flot[2][2], flot[3][1], flot[3][2], STONE_DARK)
+edge(forno, flot[3][1], flot[3][2], flot[4][1], flot[4][2], STONE_DARK)
+edge(forno, flot[4][1], flot[4][2], flot[1][1], flot[1][2], STONE_DARK)
+
+local fbase = { FP(0.2, 0.3), FP(1.8, 0.3), FP(1.8, 1.7), FP(0.2, 1.7) }
+poly(forno, fbase, STONE)
+
+local w0, w1, d0, d1 = 0.5, 1.5, 0.55, 1.55
+local wb = { FP(w0, d0), FP(w1, d0), FP(w1, d1), FP(w0, d1) }
+local wt = { FP(w0, d0, 16), FP(w1, d0, 16), FP(w1, d1, 16), FP(w0, d1, 16) }
+poly(forno, { wb[4], wb[3], wt[3], wt[4] }, C(0xA8663E))
+poly(forno, { wb[3], wb[2], wt[2], wt[3] }, C(0x8C4A34))
+edge(forno, wb[4][1], wb[4][2], wt[4][1], wt[4][2], WOOD_DARK)
+edge(forno, wb[3][1], wb[3][2], wt[3][1], wt[3][2], WOOD_DARK)
+edge(forno, wb[2][1], wb[2][2], wt[2][1], wt[2][2], WOOD_DARK)
+edge(forno, wt[4][1], wt[4][2], wt[3][1], wt[3][2], WOOD_DARK)
+edge(forno, wt[3][1], wt[3][2], wt[2][1], wt[2][2], WOOD_DARK)
+
+-- Brick courses and the dark oven mouth.
+for i = 1, 3 do
+  local a = { wb[4][1], wb[4][2] - i * 4 }
+  local b = { wb[3][1], wb[3][2] - i * 4 }
+  edge(forno, a[1], a[2], b[1], b[2], C(0x6B3D2A, 120))
+end
+local mouth = FP(0.75, 1.55)
+poly(forno, {
+  { mouth[1] - 6, mouth[2] },
+  { mouth[1] + 6, mouth[2] + 3 },
+  { mouth[1] + 6, mouth[2] - 6 },
+  { mouth[1] - 6, mouth[2] - 9 },
+}, WOOD_DARK)
+px(forno, mouth[1] - 3, mouth[2] - 3, C(0xE0A84A))
+px(forno, mouth[1] + 1, mouth[2] - 1, C(0xE0A84A))
+
+-- Domed crown and chimney on the back-right corner.
+local domeTop = FP(1, 1, 16)
+diamond(forno, domeTop[1], domeTop[2] - 8, 30, 12, C(0xB8563A))
+diamond(forno, domeTop[1], domeTop[2] - 10, 20, 9, C(0xC96A48))
+local ch = FP(1.35, 0.55, 16)
+rect(forno, ch[1] - 3, ch[2] - 14, 6, 14, C(0x8C4A34))
+rect(forno, ch[1] - 4, ch[2] - 16, 8, 3, WOOD_DARK)
+
+-- Firewood pile at the front-left and two sacks by the oven.
+for i = 0, 2 do
+  local p = FP(0.25 + i * 0.18, 1.85)
+  rect(forno, p[1] - 4, p[2] - 3, 8, 3, WOOD)
+  rect(forno, p[1] - 3, p[2] - 1, 6, 2, WOOD_DARK)
+end
+local fs = FP(1.75, 1.75)
+rect(forno, fs[1] - 3, fs[2] - 5, 6, 5, WOOD)
+rect(forno, fs[1] - 2, fs[2] - 4, 4, 3, WOOD_DARK)
+px(forno, fs[1], fs[2] - 5, C(0xC7442E))
+end
+drawForno()
+
 local function drawCapela()
 -- Capela: a 1x2 church with a bell tower, red spire and cross.
 -- The lot base centre is (40, 64); the renderer anchors the sprite there.
@@ -1303,6 +1369,129 @@ local function drawActors()
   rect(clock, 8, 9, 4, 1, SHADOW)
 end
 drawActors()
+
+-- HUD: almanac icons, season medallions, a book and a wax stamp.
+function drawHud()
+  local function disc(img, cx, cy, r, color)
+    for yy = -r, r do
+      for xx = -r, r do
+        if xx * xx + yy * yy <= r * r then px(img, cx + xx, cy + yy, color) end
+      end
+    end
+  end
+
+  local SPRING = C(0x5C8F3E)
+  local SPRING_LIGHT = C(0x8FBF6A)
+  local SUMMER = C(0xE0A84A)
+  local SUMMER_LIGHT = C(0xF2C75C)
+  local AUTUMN = C(0xC77A2E)
+  local AUTUMN_DARK = C(0x8C3E2A)
+  local WINTER = C(0x7AA7C7)
+  local WINTER_LIGHT = C(0xCFE2EE)
+  local SACK = C(0xB89A6A)
+  local SACK_DARK = C(0x8A6A48)
+  local LIME = C(0xD6C2A0)
+  local MEDAL = C(0xE0C070)
+  local WAX = C(0xA23F2F)
+  local WAX_DARK = C(0x6B2A22)
+  local PAPER = C(0xE8D8B8)
+  local INK = C(0x3A2A1E)
+
+  local spring = layer("hud_season_spring", 392, 480)
+  rect(spring, 11, 9, 2, 10, SPRING)
+  rect(spring, 7, 11, 5, 2, SPRING_LIGHT)
+  rect(spring, 4, 9, 4, 2, SPRING_LIGHT)
+  rect(spring, 12, 14, 5, 2, SPRING_LIGHT)
+  rect(spring, 16, 12, 3, 2, SPRING_LIGHT)
+  disc(spring, 12, 6, 3, SUMMER)
+  disc(spring, 12, 6, 1, SUMMER_LIGHT)
+
+  local summer = layer("hud_season_summer", 392, 508)
+  disc(summer, 12, 12, 5, SUMMER)
+  disc(summer, 12, 12, 3, SUMMER_LIGHT)
+  for i = 0, 3 do
+    local dx = i == 0 and 0 or (i == 1 and 8 or (i == 2 and 0 or -8))
+    local dy = i == 0 and -9 or (i == 1 and 0 or (i == 2 and 9 or 0))
+    rect(summer, 11 + dx, 11 + dy, 2, 2, SUMMER)
+  end
+
+  local autumn = layer("hud_season_autumn", 392, 536)
+  poly(autumn, { { 12, 4 }, { 20, 9 }, { 17, 19 }, { 12, 22 }, { 6, 18 }, { 4, 9 } }, AUTUMN)
+  edge(autumn, 12, 4, 12, 22, AUTUMN_DARK)
+  edge(autumn, 8, 11, 12, 15, AUTUMN_DARK)
+  edge(autumn, 16, 11, 12, 15, AUTUMN_DARK)
+  rect(autumn, 11, 21, 2, 3, SACK_DARK)
+
+  local winter = layer("hud_season_winter", 392, 564)
+  rect(winter, 11, 4, 2, 16, WINTER_LIGHT)
+  rect(winter, 4, 11, 16, 2, WINTER_LIGHT)
+  edge(winter, 6, 6, 18, 18, WINTER)
+  edge(winter, 18, 6, 6, 18, WINTER)
+  px(winter, 12, 12, WHITE)
+  px(winter, 8, 8, WHITE)
+  px(winter, 16, 8, WHITE)
+  px(winter, 8, 16, WHITE)
+  px(winter, 16, 16, WHITE)
+
+  local coffee = layer("hud_coffee", 424, 480)
+  rect(coffee, 7, 8, 10, 13, SACK)
+  rect(coffee, 8, 6, 8, 3, SACK_DARK)
+  rect(coffee, 5, 20, 14, 2, SACK_DARK)
+  rect(coffee, 9, 7, 6, 1, C(0xD6C2A0))
+  px(coffee, 10, 13, C(0xC7442E))
+  px(coffee, 13, 13, C(0xC7442E))
+  px(coffee, 11, 16, C(0xC7442E))
+  px(coffee, 14, 16, C(0xC7442E))
+
+  local supplies = layer("hud_supplies", 424, 508)
+  rect(supplies, 3, 8, 8, 12, SACK)
+  rect(supplies, 4, 6, 6, 2, SACK_DARK)
+  rect(supplies, 2, 19, 10, 1, SACK_DARK)
+  rect(supplies, 13, 6, 8, 14, LIME)
+  rect(supplies, 14, 4, 6, 2, C(0x9A8A70))
+  rect(supplies, 12, 19, 10, 1, C(0x9A8A70))
+  px(supplies, 6, 12, C(0x4F7A3A))
+  px(supplies, 16, 12, STONE_DARK)
+
+  local reputation = layer("hud_reputation", 424, 536)
+  poly(reputation, { { 9, 3 }, { 15, 3 }, { 13, 10 }, { 11, 10 } }, C(0x8C3E2A))
+  poly(reputation, { { 9, 3 }, { 12, 8 }, { 9, 12 }, { 6, 8 } }, C(0x5C8F3E))
+  disc(reputation, 12, 15, 5, MEDAL)
+  disc(reputation, 12, 15, 3, C(0xF2D890))
+  px(reputation, 12, 13, C(0x8A6A2A))
+  px(reputation, 11, 15, C(0x8A6A2A))
+  px(reputation, 12, 16, C(0x8A6A2A))
+
+  local book = layer("hud_book", 424, 564)
+  rect(book, 5, 4, 14, 17, WOOD_DARK)
+  rect(book, 7, 6, 10, 13, PAPER)
+  rect(book, 8, 7, 1, 11, C(0xC9B38A))
+  rect(book, 15, 4, 3, 17, GOLD)
+  rect(book, 16, 9, 1, 7, WOOD_DARK)
+
+  local stamp = layer("hud_stamp", 456, 480)
+  disc(stamp, 24, 24, 21, WAX_DARK)
+  disc(stamp, 24, 24, 18, WAX)
+  disc(stamp, 24, 24, 14, PAPER)
+  disc(stamp, 24, 24, 11, C(0xD6C2A0))
+  for i = 0, 7 do
+    local angle = i * math.pi / 4
+    local x = math.floor(24 + math.cos(angle) * 16 + 0.5)
+    local y = math.floor(24 + math.sin(angle) * 16 + 0.5)
+    rect(stamp, x - 1, y - 1, 2, 2, WAX_DARK)
+  end
+  poly(stamp, { { 24, 16 }, { 27, 22 }, { 33, 22 }, { 28, 26 }, { 30, 32 }, { 24, 28 }, { 18, 32 }, { 20, 26 }, { 15, 22 }, { 21, 22 } }, WAX)
+
+  local seal = layer("hud_seal", 456, 536)
+  disc(seal, 12, 12, 10, WAX_DARK)
+  disc(seal, 12, 12, 8, WAX)
+  disc(seal, 12, 12, 5, C(0xC96A48))
+  rect(seal, 11, 8, 2, 8, PAPER)
+  rect(seal, 8, 11, 8, 2, PAPER)
+  px(seal, 12, 11, INK)
+end
+drawHud()
+
 local function slice(name, x, y, w, h)
   local s = sprite:newSlice(Rectangle(x, y, w, h))
   s.name = name
@@ -1331,6 +1520,7 @@ slice("tulha", 0, 368, 128, 104)
 slice("capela", 320, 368, 80, 112)
 slice("venda", 128, 368, 96, 64)
 slice("escola", 224, 368, 96, 88)
+slice("forno", 256, 480, 128, 104)
 slice("family", 464, 160, 16, 24)
 local function addPersonSlices()
 for roleIndex, role in ipairs({ "man", "woman", "boy", "girl" }) do
@@ -1349,6 +1539,17 @@ addPersonSlices()
 slice("icon_fertilizer", 0, 600, 16, 16)
 slice("icon_limestone", 24, 600, 16, 16)
 slice("icon_clock", 48, 600, 16, 16)
+
+slice("hud_season_spring", 392, 480, 24, 24)
+slice("hud_season_summer", 392, 508, 24, 24)
+slice("hud_season_autumn", 392, 536, 24, 24)
+slice("hud_season_winter", 392, 564, 24, 24)
+slice("hud_coffee", 424, 480, 24, 24)
+slice("hud_supplies", 424, 508, 24, 24)
+slice("hud_reputation", 424, 536, 24, 24)
+slice("hud_book", 424, 564, 24, 24)
+slice("hud_stamp", 456, 480, 48, 48)
+slice("hud_seal", 456, 536, 24, 24)
 
 app.activeSprite = sprite
 sprite:saveAs(OUT)

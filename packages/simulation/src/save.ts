@@ -13,9 +13,14 @@ import {
   seasonOf,
   yearOf,
   SITIO_SIZE,
+  COFFEE_GRADES,
+  COFFEE_STAGES,
+  COFFEE_STORAGES,
   type BuildingKind,
+  type CoffeeBatch,
   type CoffeeGrades,
   type CoffeeLot,
+  type CoffeeSale,
   type CoffeePlantOrder,
   type Family,
   type InputStock,
@@ -38,7 +43,7 @@ import {
 } from './types';
 
 export const SITIO_SAVE_FORMAT = 'sitio-save';
-export const SITIO_SAVE_VERSION = 24;
+export const SITIO_SAVE_VERSION = 25;
 export const SITIO_SAVE_EXTENSION = '.sitio.json';
 
 const STATUSES: readonly SitioStatus[] = ['playing', 'won', 'lost', 'ended'];
@@ -54,8 +59,7 @@ interface SitioSaveState {
   wood: number;
   inputStock: InputStock;
   seedlings: number;
-  coffeeStock: number;
-  coffeeGrades: CoffeeGrades;
+  coffeeBatches: CoffeeBatch[];
   coffeePrice: number;
   status: SitioStatus;
   yearEvent: YearEvent;
@@ -96,8 +100,7 @@ export function encodeSitioSave(snapshot: SitioSnapshot, savedAt: string): Sitio
     wood: snapshot.wood,
     inputStock: snapshot.inputStock,
     seedlings: snapshot.seedlings,
-    coffeeStock: snapshot.coffeeStock,
-    coffeeGrades: snapshot.coffeeGrades,
+    coffeeBatches: snapshot.coffeeBatches,
     coffeePrice: snapshot.coffeePrice,
     status: snapshot.status,
     yearEvent: snapshot.yearEvent,
@@ -153,18 +156,16 @@ function decodeTask(value: unknown): WorkTask | null {
       return { kind: 'study' };
     case 'road':
       return { kind: 'road' };
+    case 'roast':
+      return { kind: 'roast' };
     case 'plantLot':
       return typeof value.orderId === 'number'
         ? { kind: 'plantLot', orderId: value.orderId }
         : null;
     case 'fertilize':
-      return typeof value.x === 'number' && typeof value.y === 'number'
-        ? { kind: 'fertilize', x: value.x, y: value.y }
-        : null;
+      return { kind: 'fertilize' };
     case 'limestone':
-      return typeof value.x === 'number' && typeof value.y === 'number'
-        ? { kind: 'limestone', x: value.x, y: value.y }
-        : null;
+      return { kind: 'limestone' };
     case 'build':
       return typeof value.siteId === 'number' ? { kind: 'build', siteId: value.siteId } : null;
     case 'plant':
@@ -305,6 +306,52 @@ function decodeCoffeeLot(value: unknown): CoffeeLot | null {
   };
 }
 
+function decodeCoffeeBatch(value: unknown): CoffeeBatch | null {
+  if (!isRecord(value)) return null;
+  if (
+    typeof value.id !== 'number' ||
+    !Number.isInteger(value.id) ||
+    (value.lotId !== null && typeof value.lotId !== 'number') ||
+    typeof value.grade !== 'string' ||
+    !COFFEE_GRADES.includes(value.grade as CoffeeBatch['grade']) ||
+    typeof value.amount !== 'number' ||
+    !Number.isFinite(value.amount) ||
+    value.amount <= 0 ||
+    typeof value.stage !== 'string' ||
+    !COFFEE_STAGES.includes(value.stage as CoffeeBatch['stage']) ||
+    typeof value.storage !== 'string' ||
+    !COFFEE_STORAGES.includes(value.storage as CoffeeBatch['storage']) ||
+    typeof value.ageMonths !== 'number' ||
+    !Number.isInteger(value.ageMonths) ||
+    value.ageMonths < 0
+  ) {
+    return null;
+  }
+  return {
+    id: value.id,
+    lotId: value.lotId,
+    grade: value.grade as CoffeeBatch['grade'],
+    amount: value.amount,
+    stage: value.stage as CoffeeBatch['stage'],
+    storage: value.storage as CoffeeBatch['storage'],
+    ageMonths: value.ageMonths,
+  };
+}
+
+function decodeCoffeeSale(value: unknown): CoffeeSale | null {
+  if (!isRecord(value)) return null;
+  if (
+    typeof value.batchId !== 'number' ||
+    !Number.isInteger(value.batchId) ||
+    typeof value.amount !== 'number' ||
+    !Number.isInteger(value.amount) ||
+    value.amount <= 0
+  ) {
+    return null;
+  }
+  return { batchId: value.batchId, amount: value.amount };
+}
+
 function decodeGrades(value: unknown): CoffeeGrades | null {
   if (!isRecord(value)) return null;
   if (
@@ -363,26 +410,23 @@ function decodePlantOrder(value: unknown): CoffeePlantOrder | null {
 
 function decodeMarketCart(value: unknown): MarketCart | null {
   if (!isRecord(value)) return null;
-  const fields = [
-    'wood',
-    'fertilizer',
-    'limestone',
-    'seedlings',
-    'food',
-    'bad',
-    'medium',
-    'good',
-  ] as const;
+  const fields = ['wood', 'fertilizer', 'limestone', 'seedlings', 'food'] as const;
   for (const field of fields) if (typeof value[field] !== 'number') return null;
+  if (!Array.isArray(value.coffee)) return null;
+  const coffee: CoffeeSale[] = [];
+  for (const entry of value.coffee) {
+    const sale = decodeCoffeeSale(entry);
+    if (!sale) return null;
+    coffee.push(sale);
+  }
   return {
-    wood: value.wood,
-    fertilizer: value.fertilizer,
-    limestone: value.limestone,
-    seedlings: value.seedlings,
-    bad: value.bad,
-    medium: value.medium,
-    good: value.good,
-  } as MarketCart;
+    wood: value.wood as number,
+    fertilizer: value.fertilizer as number,
+    limestone: value.limestone as number,
+    seedlings: value.seedlings as number,
+    food: value.food as number,
+    coffee,
+  };
 }
 
 function decodeHistory(value: unknown): MonthHistoryPoint[] | null {
@@ -457,6 +501,13 @@ function decodeReport(value: unknown): SeasonReport | null | undefined {
     typeof value.lost !== 'number' ||
     typeof value.sold !== 'number' ||
     typeof value.stock !== 'number' ||
+    typeof value.dried !== 'number' ||
+    typeof value.spoiled !== 'number' ||
+    typeof value.roasted !== 'number' ||
+    typeof value.roastWood !== 'number' ||
+    typeof value.dryingStock !== 'number' ||
+    typeof value.dryStock !== 'number' ||
+    typeof value.roastedStock !== 'number' ||
     typeof value.revenue !== 'number' ||
     typeof value.price !== 'number' ||
     typeof value.foodProduced !== 'number' ||
@@ -520,11 +571,7 @@ export function decodeSitioSave(text: string): SitioDecodeResult {
     typeof raw.inputStock.fertilizer !== 'number' ||
     typeof raw.inputStock.limestone !== 'number' ||
     typeof raw.seedlings !== 'number' ||
-    typeof raw.coffeeStock !== 'number' ||
-    !isRecord(raw.coffeeGrades) ||
-    typeof raw.coffeeGrades.bad !== 'number' ||
-    typeof raw.coffeeGrades.medium !== 'number' ||
-    typeof raw.coffeeGrades.good !== 'number' ||
+    !Array.isArray(raw.coffeeBatches) ||
     typeof raw.coffeePrice !== 'number' ||
     typeof raw.status !== 'string' ||
     !STATUSES.includes(raw.status as SitioStatus) ||
@@ -607,14 +654,18 @@ export function decodeSitioSave(text: string): SitioDecodeResult {
     if (!order) return invalid('state.plantOrders');
     plantOrders.push(order);
   }
+  const coffeeBatches: CoffeeBatch[] = [];
+  for (const entry of raw.coffeeBatches) {
+    const batch = decodeCoffeeBatch(entry);
+    if (!batch) return invalid('state.coffeeBatches');
+    coffeeBatches.push(batch);
+  }
   const history = decodeHistory(raw.history);
   if (!history) return invalid('state.history');
   const totals = decodeTotals(raw.totals);
   if (!totals) return invalid('state.totals');
   const inputStock = decodeInputs(raw.inputStock);
   if (!inputStock) return invalid('state.inputStock');
-  const coffeeGrades = decodeGrades(raw.coffeeGrades);
-  if (!coffeeGrades) return invalid('state.coffeeGrades');
   const roadPlan = decodeRoadPlan(raw.roadPlan);
   if (!roadPlan) return invalid('state.roadPlan');
   const marketCart = decodeMarketCart(raw.marketCart);
@@ -631,8 +682,7 @@ export function decodeSitioSave(text: string): SitioDecodeResult {
     wood: raw.wood,
     inputStock,
     seedlings: raw.seedlings,
-    coffeeStock: raw.coffeeStock,
-    coffeeGrades,
+    coffeeBatches,
     coffeePrice: raw.coffeePrice,
     status: raw.status as SitioStatus,
     yearEvent: raw.yearEvent as YearEvent,

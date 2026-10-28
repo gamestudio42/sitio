@@ -19,6 +19,7 @@ export const BUILDING_TULHA = 4;
 export const BUILDING_CAPELA = 5;
 export const BUILDING_VENDA = 6;
 export const BUILDING_ESCOLA = 7;
+export const BUILDING_FORNO = 8;
 
 export const SEDE_X = 6;
 export const SEDE_Y = 2;
@@ -38,18 +39,27 @@ export const BUILDING_FOOTPRINTS: Record<number, Footprint> = {
   [BUILDING_CAPELA]: { w: 1, h: 2 },
   [BUILDING_VENDA]: { w: 2, h: 1 },
   [BUILDING_ESCOLA]: { w: 2, h: 2 },
+  [BUILDING_FORNO]: { w: 2, h: 2 },
 };
 
 export function footprintOfBuilding(id: number): Footprint {
   return BUILDING_FOOTPRINTS[id] ?? { w: 1, h: 1 };
 }
 
-export type BuildingKind = 'house' | 'terreiro' | 'tulha' | 'capela' | 'venda' | 'escola';
+export type BuildingKind =
+  | 'house'
+  | 'terreiro'
+  | 'tulha'
+  | 'forno'
+  | 'capela'
+  | 'venda'
+  | 'escola';
 
 export const BUILDING_IDS: Record<BuildingKind, number> = {
   house: BUILDING_HOUSE,
   terreiro: BUILDING_TERREIRO,
   tulha: BUILDING_TULHA,
+  forno: BUILDING_FORNO,
   capela: BUILDING_CAPELA,
   venda: BUILDING_VENDA,
   escola: BUILDING_ESCOLA,
@@ -67,6 +77,7 @@ export const BUILDING_SPECS: Record<BuildingKind, BuildingSpec> = {
   house: { coins: 4, wood: 2, days: 2 },
   terreiro: { coins: 3, wood: 2, days: 2 },
   tulha: { coins: 4, wood: 3, days: 2, prereq: ['terreiro'], unique: true },
+  forno: { coins: 5, wood: 2, days: 2, prereq: ['tulha'], unique: true },
   capela: { coins: 5, wood: 3, days: 3, prereq: ['escola'], unique: true },
   venda: { coins: 4, wood: 2, days: 2, prereq: ['tulha'], unique: true },
   escola: { coins: 6, wood: 3, days: 3, prereq: ['venda'], unique: true },
@@ -88,15 +99,36 @@ export interface CoffeeGrades {
   good: number;
 }
 
+export type CoffeeStage = 'drying' | 'dry' | 'roasted';
+
+export const COFFEE_STAGES: readonly CoffeeStage[] = ['drying', 'dry', 'roasted'];
+
+export type CoffeeStorage = 'terreiro' | 'tulha' | 'forno';
+
+export const COFFEE_STORAGES: readonly CoffeeStorage[] = ['terreiro', 'tulha', 'forno'];
+
+export interface CoffeeBatch {
+  id: number;
+  lotId: number | null;
+  grade: CoffeeGrade;
+  amount: number;
+  stage: CoffeeStage;
+  storage: CoffeeStorage;
+  ageMonths: number;
+}
+
+export interface CoffeeSale {
+  batchId: number;
+  amount: number;
+}
+
 export interface MarketCart {
   wood: number;
   fertilizer: number;
   limestone: number;
   seedlings: number;
   food: number;
-  bad: number;
-  medium: number;
-  good: number;
+  coffee: CoffeeSale[];
 }
 
 export type InputKind = 'fertilizer' | 'limestone';
@@ -134,8 +166,13 @@ export const FOOD_SELL_PRICE = 1;
 export const REST_BONUS = 1;
 export const COFFEE_CELLS_PER_PERIOD = 4;
 export const HARVEST_YIELD = COFFEE_PES_PER_CELL;
-export const TERREIRO_CAPACITY = 16;
-export const TULHA_EXTRA_CAPACITY = 6;
+export const TERREIRO_LOT_SLOTS = 4;
+export const TULHA_CAPACITY = 256;
+export const COFFEE_DRY_MONTHS = 1;
+export const COFFEE_MAX_DRY_MONTHS = 3;
+export const COFFEE_ROAST_BONUS = 2;
+export const COFFEE_DRY_MULTIPLIERS = [1, 0.66, 0.33] as const;
+export const DEMOLISH_WOOD_RETURN = 0.5;
 export const COFFEE_BASE_PRICE = 2;
 export const ARRIVAL_REPUTATION = 3;
 export const MORALE_START = 3;
@@ -191,9 +228,10 @@ export type WorkTask =
   | { kind: 'coffee' }
   | { kind: 'study' }
   | { kind: 'road' }
+  | { kind: 'roast' }
   | { kind: 'plantLot'; orderId: number }
-  | { kind: 'fertilize'; x: number; y: number }
-  | { kind: 'limestone'; x: number; y: number }
+  | { kind: 'fertilize' }
+  | { kind: 'limestone' }
   | { kind: 'build'; siteId: number }
   | { kind: 'plant'; x: number; y: number }
   | { kind: 'clear'; x: number; y: number };
@@ -299,6 +337,13 @@ export interface SeasonReport {
   lost: number;
   sold: number;
   stock: number;
+  dried: number;
+  spoiled: number;
+  roasted: number;
+  roastWood: number;
+  dryingStock: number;
+  dryStock: number;
+  roastedStock: number;
   revenue: number;
   price: number;
   foodProduced: number;
@@ -338,9 +383,16 @@ export interface SitioStats {
   wood: number;
   inputStock: InputStock;
   seedlings: number;
+  coffeeBatches: CoffeeBatch[];
+  coffeeDrying: number;
+  coffeeDry: number;
+  coffeeRoasted: number;
   coffeeStock: number;
   coffeeGrades: CoffeeGrades;
-  coffeeCapacity: number;
+  terreiroSlots: number;
+  terreiroUsed: number;
+  tulhaCapacity: number;
+  tulhaUsed: number;
   coffeePrice: number;
   roadQueue: number;
   reputation: number;
@@ -376,9 +428,16 @@ export interface SitioFullState {
   wood: number;
   inputStock: InputStock;
   seedlings: number;
+  coffeeBatches: CoffeeBatch[];
+  coffeeDrying: number;
+  coffeeDry: number;
+  coffeeRoasted: number;
   coffeeStock: number;
   coffeeGrades: CoffeeGrades;
-  coffeeCapacity: number;
+  terreiroSlots: number;
+  terreiroUsed: number;
+  tulhaCapacity: number;
+  tulhaUsed: number;
   coffeePrice: number;
   reputation: number;
   status: SitioStatus;
@@ -409,8 +468,7 @@ export interface SitioSnapshot {
   wood: number;
   inputStock: InputStock;
   seedlings: number;
-  coffeeStock: number;
-  coffeeGrades: CoffeeGrades;
+  coffeeBatches: CoffeeBatch[];
   coffeePrice: number;
   status: SitioStatus;
   yearEvent: YearEvent;
@@ -438,6 +496,7 @@ export interface SitioSnapshot {
 export interface NewSitioOptions {
   name: string;
   seed: string;
+  preset?: 'test';
 }
 
 export interface SitioMeta {
@@ -455,7 +514,7 @@ export type SitioCommand =
   | { type: 'assign'; personId: number; task: WorkTask }
   | { type: 'build'; kind: BuildingKind; x: number; y: number }
   | { type: 'placeStarter'; kind: StarterKind; x: number; y: number }
-  | { type: 'sellCoffee'; grade: CoffeeGrade; amount: number }
+  | { type: 'sellCoffee'; batchId: number; amount: number }
   | { type: 'sellFood'; amount: number }
   | { type: 'buyWood'; amount: number }
   | { type: 'buyInput'; kind: InputKind; amount: number }
@@ -465,6 +524,7 @@ export type SitioCommand =
   | { type: 'clearRoadPlan' }
   | { type: 'clearMarketCart' }
   | { type: 'inviteFamily' }
+  | { type: 'demolish'; structureId: number }
   | { type: 'endMonth' };
 
 export type SitioCommandReason =
@@ -489,6 +549,8 @@ export type SitioCommandReason =
   | 'unique'
   | 'reserved'
   | 'no-site'
+  | 'no-structure'
+  | 'in-use'
   | 'game-over'
   | 'nothing';
 
@@ -547,4 +609,32 @@ export function monthOfYear(turn: number): number {
 
 export function isBuildingKind(value: string): value is BuildingKind {
   return value in BUILDING_IDS;
+}
+
+export function demolishRecovery(kind: BuildingKind): number {
+  return Math.floor(BUILDING_SPECS[kind].wood * DEMOLISH_WOOD_RETURN);
+}
+
+export function coffeeAgeMultiplier(ageMonths: number): number {
+  if (ageMonths <= 0) return COFFEE_DRY_MULTIPLIERS[0];
+  const index = Math.min(ageMonths, COFFEE_DRY_MULTIPLIERS.length - 1);
+  return COFFEE_DRY_MULTIPLIERS[index] ?? COFFEE_DRY_MULTIPLIERS[0];
+}
+
+export function coffeeGradePrice(grade: CoffeeGrade, base: number): number {
+  if (grade === 'bad') return Math.max(1, base - 1);
+  if (grade === 'good') return base + 1;
+  return base;
+}
+
+export function coffeeBatchValue(
+  batch: Pick<CoffeeBatch, 'grade' | 'stage' | 'ageMonths'>,
+  basePrice: number,
+): number {
+  const gradePrice = coffeeGradePrice(batch.grade, basePrice);
+  if (batch.stage === 'roasted') return gradePrice + COFFEE_ROAST_BONUS;
+  if (batch.stage === 'dry') {
+    return Math.max(1, Math.round(gradePrice * coffeeAgeMultiplier(batch.ageMonths)));
+  }
+  return 0;
 }
