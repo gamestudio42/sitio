@@ -166,6 +166,10 @@ and reads the farm; the renderer draws it with the Sítio theme. See the
 Aseprite edits; `pnpm art:draw` rebuilds the document from the Lua generator and
 discards manual edits.
 
+The current manual art pass is documented in
+[`art/sitio/visual-pass.md`](art/sitio/visual-pass.md), with before/after
+comparisons for the refreshed buildings and trees.
+
 ## Fork & remix
 
 Sítio is AGPL-3.0-or-later for the game code and Apache-2.0 for the reusable

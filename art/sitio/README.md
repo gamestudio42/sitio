@@ -38,6 +38,11 @@ Keep the slice names stable: the HUD references them by name. Moving a slice is
 safe after `pnpm art` updates the JSON; changing its dimensions may require a
 layout adjustment in `apps/web/src/hud.css`.
 
+## Visual pass
+
+The current manual art pass is documented in [visual-pass.md](visual-pass.md),
+with before/after comparisons and pixel-change notes for every edited sprite.
+
 ## Live Aseprite workflow
 
 1. Open Aseprite.
