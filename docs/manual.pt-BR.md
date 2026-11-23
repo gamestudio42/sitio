@@ -61,8 +61,8 @@ anos.
 Escolha o nome e a semente do sítio e posicione as quatro construções iniciais
 em terra aberta.
 
-1. Passe o mouse sobre o mapa para pré-visualizar o footprint.
-2. Clique numa área aberta para fixar o blueprint.
+1. Passe o mouse sobre o mapa para pré-visualizar o footprint. Numa tela de toque, toque no mapa.
+2. Clique ou toque numa área aberta para fixar o blueprint.
 3. Confirme a colocação.
 4. Repita para a casa, o terreiro e o cafezal.
 
@@ -81,8 +81,8 @@ confirmação.
 
 | Ação | Como |
 | --- | --- |
-| Mover o mapa | Arrastar com o botão direito ou do meio |
-| Zoom | Roda do mouse |
+| Mover o mapa | Arrastar com o botão direito, com o do meio, ou com um dedo |
+| Zoom | Roda do mouse, ou juntar dois dedos |
 | Escolher ferramenta | Página Obras |
 | Colocar construção | Escolher o prédio, clicar no mapa e confirmar |
 | Atribuir trabalho | Página Famílias, um ícone de tarefa por pessoa |

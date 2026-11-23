@@ -59,8 +59,8 @@ The calendar has **48 months**: four seasons of four months, across three years.
 
 Choose a farm name and a seed, then place the four starters on open land.
 
-1. Move the pointer over the map to preview the footprint.
-2. Click an open area to pin the blueprint.
+1. Move the pointer over the map to preview the footprint. On a touch screen, tap the map.
+2. Click or tap an open area to pin the blueprint.
 3. Confirm the placement.
 4. Repeat for the house, the terreiro and the coffee lot.
 
@@ -79,8 +79,8 @@ after the last starter is confirmed.
 
 | Action | How |
 | --- | --- |
-| Pan the map | Right-drag or middle-drag |
-| Zoom | Mouse wheel |
+| Pan the map | Right-drag, middle-drag, or one-finger drag |
+| Zoom | Mouse wheel, or a two-finger pinch |
 | Select a tool | Works page |
 | Place a building | Choose the building, click the map, confirm |
 | Assign work | Families page, one task icon per person |

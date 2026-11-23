@@ -1559,3 +1559,13 @@ input,
 .market-cart td.negative {
   color: var(--red);
 }
+
+@media (pointer: coarse) {
+  .button,
+  .file-button,
+  .locale-trigger,
+  .locale-menu button,
+  .hud-menu-locale select {
+    min-height: 44px;
+  }
+}
