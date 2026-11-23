@@ -1163,3 +1163,145 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Short landscape phones: keep the page between the HUD and the tab bar. */
+@media (max-height: 520px) {
+  .hud {
+    top: 4px;
+    right: 6px;
+    left: 6px;
+    gap: 4px;
+  }
+
+  .hud-brand-copy span,
+  .hud-status,
+  .hud-slot-label {
+    display: none;
+  }
+
+  .hud-plaque {
+    gap: 6px;
+    padding: 4px 6px;
+  }
+
+  .hud-tabs {
+    right: 84px;
+    bottom: 6px;
+    left: 8px;
+    max-width: none;
+    transform: none;
+  }
+
+  .hud-end-month {
+    right: 8px;
+    bottom: 6px;
+    width: 72px;
+    height: 72px;
+    font-size: 8px;
+  }
+
+  .hud-end-month .hud-sprite {
+    width: 28px !important;
+    height: 28px !important;
+  }
+
+  .side-panel.book-panel,
+  .book-panel[data-panel='families'],
+  .book-panel[data-panel='market'],
+  .book-panel[data-panel='reports'],
+  .book-panel[data-panel='works'],
+  .book-panel[data-panel='coffee'] {
+    top: 64px;
+    right: auto;
+    bottom: 84px;
+    left: 8px;
+    width: min(400px, calc(100vw - 104px));
+    height: auto;
+    max-height: none;
+    transform: none;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .book-panel[data-panel='works'],
+  .book-panel[data-panel='coffee'] {
+    right: 8px;
+    width: auto;
+    height: auto;
+    overflow-y: auto;
+  }
+
+  .side-panel.book-panel.setup {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .side-panel.book-panel.setup .setup-panel {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    margin: 0;
+    overflow: hidden;
+  }
+
+  .side-panel.book-panel.setup .setup-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .side-panel.book-panel.setup .setup-status,
+  .side-panel.book-panel.setup .setup-actions {
+    flex: none;
+  }
+
+  .side-panel.book-panel.setup .setup-actions {
+    margin-top: 8px;
+    padding-top: 8px;
+    background: var(--hud-paper);
+  }
+}
+
+/* Narrow phones: keep a band of the map free above the foreman page. */
+@media (max-width: 700px) {
+  .side-panel.book-panel.setup {
+    top: 40vh;
+    right: 8px;
+    bottom: 84px;
+    left: 8px;
+    width: auto;
+    max-height: none;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transform: none;
+  }
+
+  .side-panel.book-panel.setup .setup-panel {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    margin: 0;
+    overflow: hidden;
+  }
+
+  .side-panel.book-panel.setup .setup-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .side-panel.book-panel.setup .setup-status,
+  .side-panel.book-panel.setup .setup-actions {
+    flex: none;
+  }
+
+  .side-panel.book-panel.setup .setup-actions {
+    margin-top: 8px;
+  }
+}

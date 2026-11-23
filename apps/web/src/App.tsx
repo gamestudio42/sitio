@@ -39,7 +39,8 @@ import { fieldMarkers } from './actors';
 import { HudBar } from './hud';
 import { LOCALES, LOCALE_LABELS, useStrings, type Strings } from './i18n';
 import { AtlasSprite, FamilyPortraits, GuidePortrait } from './portrait';
-import { SitioSession, type Panel, type PendingDemolish } from './session';
+import { useCoarsePointer } from './pointer';
+import { SitioSession, type Panel, type PendingDemolish, type Tool } from './session';
 
 const MARK = `${import.meta.env.BASE_URL}favicon.svg`;
 
@@ -220,8 +221,16 @@ function Menu({ session }: { session: SitioSession }) {
   );
 }
 
+function worksHint(t: Strings, tool: Tool, coarse: boolean): string {
+  if (tool === 'select') return coarse ? t.hintTouch : t.hint;
+  if (tool === 'road') return coarse ? t.hintRoadTouch : t.hintRoad;
+  if (tool === 'demolish') return coarse ? t.hintDemolishTouch : t.hintDemolish;
+  return coarse ? t.hintBuildTouch : t.hintBuild;
+}
+
 function Game({ session }: { session: SitioSession }) {
   const t = useStrings(session.ui);
+  const coarse = useCoarsePointer();
   const state = useStore(session.ui, (ui) => ui.state);
   const tool = useStore(session.ui, (ui) => ui.tool);
   const activePanel = useStore(session.ui, (ui) => ui.activePanel);
@@ -401,14 +410,8 @@ function Game({ session }: { session: SitioSession }) {
                   );
                 })}
               </div>
-              <p className="hint">
-                {tool === 'select'
-                  ? t.hint
-                  : tool === 'road'
-                    ? t.hintRoad
-                    : tool === 'demolish'
-                      ? t.hintDemolish
-                      : t.hintBuild}
+              <p className="hint" data-testid="sitio-works-hint">
+                {worksHint(t, tool, coarse)}
               </p>
             </section>
 
@@ -1809,54 +1812,71 @@ function SetupPanel({
 }) {
   const preview = useStore(session.ui, (ui) => ui.setupPreview);
   const pinned = useStore(session.ui, (ui) => ui.setupPinned);
+  const coarse = useCoarsePointer();
   const step = state.setup;
   if (!step) return null;
   const current = SETUP_STEPS.indexOf(step);
   const footprint = STARTER_FOOTPRINTS[step];
+  const status = !preview
+    ? coarse
+      ? t.setup.clickTouch
+      : t.setup.click
+    : preview.ok
+      ? pinned
+        ? t.setup.blueprint
+        : coarse
+          ? t.setup.fixTouch
+          : t.setup.fix
+      : `${t.setup.invalid} ${t.command[preview.reason ?? 'occupied']}`;
   return (
     <section className={`setup-panel ${pinned ? 'pinned' : ''}`}>
-      <h2>{t.setup.title}</h2>
-      <div className="tutorial-guide" data-testid="sitio-tutorial" data-step={step}>
-        <div className="guide-portrait-box">
-          <GuidePortrait label={t.setup.guideName} />
+      <div className="setup-scroll">
+        <h2>{t.setup.title}</h2>
+        <div className="tutorial-guide" data-testid="sitio-tutorial" data-step={step}>
+          <div className="guide-portrait-box">
+            <GuidePortrait label={t.setup.guideName} />
+          </div>
+          <div className="speech-bubble" role="note" aria-live="polite">
+            <strong>{t.setup.guideName}</strong>
+            <p>{t.setup.guide[step]}</p>
+          </div>
         </div>
-        <div className="speech-bubble" role="note" aria-live="polite">
-          <strong>{t.setup.guideName}</strong>
-          <p>{t.setup.guide[step]}</p>
-        </div>
+        <ol className="setup-steps">
+          {SETUP_STEPS.map((entry, index) => (
+            <li
+              key={entry}
+              className={index === current ? 'current' : index < current ? 'done' : ''}
+            >
+              {t.setup.step[entry]}
+            </li>
+          ))}
+        </ol>
+        <p>
+          <strong>{t.setup.step[step]}</strong> · {footprint.w}×{footprint.h}
+        </p>
       </div>
-      <ol className="setup-steps">
-        {SETUP_STEPS.map((entry, index) => (
-          <li
-            key={entry}
-            className={index === current ? 'current' : index < current ? 'done' : ''}
-          >
-            {t.setup.step[entry]}
-          </li>
-        ))}
-      </ol>
-      <p>
-        <strong>{t.setup.step[step]}</strong> · {footprint.w}×{footprint.h}
-      </p>
-      <p className={preview?.ok ? 'muted small' : 'warning small'}>
-        {preview
-          ? preview.ok
-            ? pinned
-              ? t.setup.blueprint
-              : t.setup.fix
-            : `${t.setup.invalid} ${t.command[preview.reason ?? 'occupied']}`
-          : t.setup.click}
+      <p
+        className={`setup-status ${preview?.ok ? 'muted small' : 'warning small'}`}
+        data-testid="sitio-setup-status"
+      >
+        {status}
       </p>
       <div className="setup-actions">
         <button
           type="button"
           className="button primary"
+          data-testid="sitio-setup-confirm"
           disabled={!preview?.ok || !pinned}
           onClick={() => void session.confirmStarter()}
         >
           {t.setup.confirm}
         </button>
-        <button type="button" className="button" onClick={() => session.cancelStarter()}>
+        <button
+          type="button"
+          className="button"
+          data-testid="sitio-setup-cancel"
+          onClick={() => session.cancelStarter()}
+        >
           {t.setup.cancel}
         </button>
       </div>

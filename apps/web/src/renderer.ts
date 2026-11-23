@@ -36,6 +36,13 @@ import {
 import { fieldMarkers, planActors, restingHouses, type ActorPlan } from './actors';
 import { spriteName } from './appearance';
 import { readSlices } from './atlas';
+import {
+  gesturePointerDown,
+  gesturePointerMove,
+  gesturePointerUp,
+  type GestureEffect,
+  type GestureState,
+} from './gestures';
 
 class FlatHeights implements HeightSource {
   constructor(readonly size: number) {}
@@ -348,6 +355,7 @@ export class SitioRenderer {
   } | null = null;
   private ghost: Sprite | null = null;
   private panning: { x: number; y: number } | null = null;
+  private gesture: GestureState | null = null;
   private initialized = false;
   private destroyed = false;
   private inputEnabled = true;
@@ -1262,31 +1270,89 @@ export class SitioRenderer {
       .stroke({ width: 2, color: 0xfff2d8, alpha: 0.85 });
   }
 
+  private placeAt(clientX: number, clientY: number): void {
+    if (!this.inputEnabled) return;
+    const tile = this.pick(clientX, clientY);
+    if (tile) this.onTile?.(tile.x, tile.y);
+  }
+
+  private applyGesture(canvas: HTMLCanvasElement, effect: GestureEffect): void {
+    if (effect.type === 'pan') {
+      this.camera.pan(effect.dx, effect.dy);
+      return;
+    }
+    if (effect.type === 'pinch') {
+      const rect = canvas.getBoundingClientRect();
+      this.camera.zoomAt(effect.factor, effect.x - rect.left, effect.y - rect.top);
+      return;
+    }
+    if (effect.type === 'tap') this.placeAt(effect.x, effect.y);
+  }
+
+  private capturePointer(canvas: HTMLCanvasElement, pointerId: number): void {
+    try {
+      canvas.setPointerCapture(pointerId);
+    } catch {
+      /* synthetic or already-released pointer */
+    }
+  }
+
+  private onTouchDown(canvas: HTMLCanvasElement, event: PointerEvent): void {
+    if (event.cancelable) event.preventDefault();
+    this.capturePointer(canvas, event.pointerId);
+    const step = gesturePointerDown(this.gesture, {
+      id: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    });
+    this.gesture = step.state;
+    this.applyGesture(canvas, step.effect);
+  }
+
+  private onTouchMove(canvas: HTMLCanvasElement, event: PointerEvent): void {
+    if (event.cancelable) event.preventDefault();
+    const step = gesturePointerMove(this.gesture, {
+      id: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    });
+    this.gesture = step.state;
+    this.applyGesture(canvas, step.effect);
+  }
+
+  private onTouchEnd(canvas: HTMLCanvasElement, event: PointerEvent, commitTap: boolean): void {
+    const step = gesturePointerUp(this.gesture, event.pointerId, commitTap);
+    this.gesture = step.state;
+    this.applyGesture(canvas, step.effect);
+  }
+
   private attachInput(canvas: HTMLCanvasElement): void {
     const signal = this.listeners.signal;
+    const touch = (event: PointerEvent) => event.pointerType !== 'mouse';
     canvas.addEventListener('contextmenu', (event) => event.preventDefault(), { signal });
     canvas.addEventListener(
       'pointerdown',
       (event) => {
-        try {
-          canvas.setPointerCapture(event.pointerId);
-        } catch {
-          /* synthetic or already-released pointer */
+        if (touch(event)) {
+          this.onTouchDown(canvas, event);
+          return;
         }
+        this.capturePointer(canvas, event.pointerId);
         if (event.button === 1 || event.button === 2) {
           this.panning = { x: event.clientX, y: event.clientY };
           return;
         }
-        if (event.button === 0 && this.inputEnabled) {
-          const tile = this.pick(event.clientX, event.clientY);
-          if (tile) this.onTile?.(tile.x, tile.y);
-        }
+        if (event.button === 0) this.placeAt(event.clientX, event.clientY);
       },
-      { signal },
+      { signal, passive: false },
     );
     canvas.addEventListener(
       'pointermove',
       (event) => {
+        if (touch(event)) {
+          this.onTouchMove(canvas, event);
+          return;
+        }
         if (this.panning) {
           this.camera.pan(event.clientX - this.panning.x, event.clientY - this.panning.y);
           this.panning = { x: event.clientX, y: event.clientY };
@@ -1294,10 +1360,37 @@ export class SitioRenderer {
         }
         this.setHover(this.inputEnabled ? this.pick(event.clientX, event.clientY) : null);
       },
+      { signal, passive: false },
+    );
+    canvas.addEventListener(
+      'pointerup',
+      (event) => {
+        if (touch(event)) {
+          this.onTouchEnd(canvas, event, true);
+          return;
+        }
+        this.panning = null;
+      },
       { signal },
     );
-    canvas.addEventListener('pointerup', () => (this.panning = null), { signal });
-    canvas.addEventListener('pointerleave', () => this.setHover(null), { signal });
+    canvas.addEventListener(
+      'pointercancel',
+      (event) => {
+        if (touch(event)) {
+          this.onTouchEnd(canvas, event, false);
+          return;
+        }
+        this.panning = null;
+      },
+      { signal },
+    );
+    canvas.addEventListener(
+      'pointerleave',
+      (event) => {
+        if (event.pointerType === 'mouse') this.setHover(null);
+      },
+      { signal },
+    );
     canvas.addEventListener(
       'wheel',
       (event) => {
